@@ -501,7 +501,35 @@ html.embedded-vplaner{
   --shadow:0 5px 18px rgba(31,41,55,.05);
 }
 html.embedded-vplaner body{background:#f6f9fc}
-html.embedded-vplaner .topbar{display:none}
+html.embedded-vplaner .topbar{
+  display:flex;
+  justify-content:flex-end;
+  align-items:center;
+  min-height:54px;
+  padding:8px 16px;
+  background:#fff;
+  border-bottom:1px solid var(--line);
+}
+html.embedded-vplaner .topbar .brand{display:none}
+html.embedded-vplaner .topbar .top-actions{margin-left:auto;display:flex}
+html.embedded-vplaner .year-control{
+  border-color:#cfe1f2;
+  background:#eef7ff;
+  color:#075aa8;
+}
+html.embedded-vplaner .year-control select{color:#075aa8}
+html.embedded-vplaner .gear-btn{
+  border-color:#cfe1f2;
+  color:#075aa8;
+}
+html.embedded-vplaner .gear-btn:hover,
+html.embedded-vplaner .gear-btn.active{
+  border-color:#9bc9ef;
+  background:#eef7ff;
+  color:#075aa8;
+}
+.embedded-settings-tab{display:none}
+html.embedded-vplaner .embedded-settings-tab{display:inline-flex}
 html.embedded-vplaner .tabs{top:0;padding:9px 16px}
 html.embedded-vplaner main{padding:16px 16px 38px;max-width:none}
 html.embedded-vplaner .card{border-radius:13px}
@@ -509,3 +537,11 @@ html.embedded-vplaner .tab.active{background:var(--soft);color:var(--accent-dark
 html.embedded-vplaner input:focus,
 html.embedded-vplaner select:focus,
 html.embedded-vplaner textarea:focus{outline-color:#9bc9ef;border-color:var(--accent)}
+
+@media(max-width:700px){
+  html.embedded-vplaner .topbar{padding:7px 10px}
+  html.embedded-vplaner .top-actions{width:100%;justify-content:space-between;gap:7px}
+  html.embedded-vplaner .year-control{flex:1;justify-content:space-between}
+  html.embedded-vplaner .tabs{padding:7px 8px}
+  html.embedded-vplaner .tab{padding:8px 10px}
+}

@@ -1003,7 +1003,8 @@ function renderAll() {
 function switchView(name) {
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === `view-${name}`));
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === name));
-  document.getElementById('settingsButton').classList.toggle('active', name === 'settings');
+  const settingsButton = document.getElementById('settingsButton');
+  if (settingsButton) settingsButton.classList.toggle('active', name === 'settings');
   if (name === 'reports') renderReports();
   if (name === 'bookings') renderBookings();
   if (name === 'cash') renderCashClosings();

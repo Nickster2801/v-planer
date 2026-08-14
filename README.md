@@ -347,3 +347,16 @@ Die Monatsansicht wurde kompakter und klassischer aufgebaut:
 - Aufgaben, Projekte, Termine und Geburtstage haben eine kleine Legende
 - pro Tag werden maximal drei Arbeits-/Termineinträge direkt angezeigt; weitere werden als „+ n weitere“ zusammengefasst
 - die rechte Spalte heißt jetzt **Nächste Einträge** und enthält weiterhin Termine, Aufgaben, Projekte und Geburtstage
+
+## Korrektur: KassenKumpel-Einstellungen
+
+Im eingebetteten KassenKumpel waren die Einstellungen zunächst nicht sichtbar, weil die originale KassenKumpel-Kopfzeile im V-Planer-Modus komplett ausgeblendet wurde. In dieser Kopfzeile befand sich auch das Einstellungs-Zahnrad.
+
+Das wurde korrigiert:
+
+- im V-Planer-Modus erscheint jetzt eine kompakte KassenKumpel-Kopfzeile
+- die **Jahresauswahl** ist wieder sichtbar
+- der Status eines abgeschlossenen Jahres bleibt sichtbar
+- das **Einstellungs-Zahnrad** ist wieder erreichbar
+- zusätzlich gibt es in der KassenKumpel-Navigation einen eigenen Reiter **⚙ Einstellungen**
+- alle bestehenden KassenKumpel-Einstellungen wie Konten, Kategorien, Veranstaltungen, Ansicht/Skalierung, Belegspeicher, Jahresverwaltung, Backups und weitere Verwaltungsfunktionen bleiben erreichbar
