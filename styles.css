@@ -193,3 +193,296 @@ input,select,textarea{font-size:16px}
   .row{align-items:flex-start;flex-direction:column}
   .group-stat-grid{grid-template-columns:1fr 1fr}
 }
+
+
+.doc-actions{display:flex;gap:10px;align-items:center;white-space:nowrap}
+.danger-text{color:#b42318!important}
+.danger-text:hover{color:#7a271a!important;text-decoration:underline}
+.action-btn:disabled{opacity:.55;cursor:not-allowed}
+@media(max-width:760px){
+  .doc-actions{white-space:normal;flex-wrap:wrap}
+  .doc-actions .action-btn{padding:6px 0}
+}
+
+
+/* V-Planer 1.0 – konfigurierbare Gruppenarten */
+.group-type-list{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.group-type-row{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:8px;align-items:center}
+.group-type-order{width:34px;height:34px;border-radius:9px;background:#f1f5f9;display:grid;place-items:center;font-weight:700;color:#667085;font-size:13px}
+.group-type-row .group-type-name{margin:0;min-width:0}
+.group-type-actions{display:flex;gap:5px;align-items:center}
+.group-type-actions .icon-btn.small{width:34px;height:34px;min-width:34px;padding:0;font-size:17px}
+.group-type-actions .icon-btn:disabled{opacity:.3;cursor:not-allowed}
+.group-type-add{margin-top:12px;width:100%}
+.group-type-note{margin-top:10px!important}
+@media(max-width:600px){
+  .group-type-row{grid-template-columns:30px minmax(0,1fr)}
+  .group-type-order{width:30px;height:38px}
+  .group-type-actions{grid-column:2;justify-content:flex-end}
+  .group-type-actions .icon-btn.small{width:40px;height:40px;min-width:40px}
+}
+
+
+/* V-Planer 1.0 – Ordnerstrukturen in Sitzungen, Dokumenten und Vereinswissen */
+.content-browser-layout{display:grid;grid-template-columns:280px minmax(0,1fr);gap:13px;align-items:start}
+.browser-main{min-width:0}
+.folder-panel{position:sticky;top:96px;max-height:calc(100vh - 120px);overflow:hidden}
+.folder-panel .card-body{padding:10px;max-height:calc(100vh - 175px);overflow:auto}
+.folder-tree{display:flex;flex-direction:column;gap:2px}
+.folder-node-wrap{display:block}
+.folder-node{width:100%;border:0;background:transparent;border-radius:9px;display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:7px;align-items:center;text-align:left;padding:8px 8px 8px calc(8px + var(--folder-level,0)*14px);cursor:pointer;color:#344054}
+.folder-node:hover{background:#f5f9fd}
+.folder-node.active{background:linear-gradient(90deg,var(--blue-soft),var(--green-soft));color:var(--blue-dark);font-weight:750}
+.folder-icon{font-size:15px}.folder-node-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.folder-count{min-width:23px;height:21px;border-radius:999px;background:#eef2f6;color:#667085;display:grid;place-items:center;font-size:10px;font-weight:800;padding:0 5px}
+.folder-node.active .folder-count{background:#fff;color:var(--blue)}
+.folder-empty{font-size:11px;color:var(--muted);padding:8px 12px 8px 30px}
+.folder-toolbar{display:flex;justify-content:space-between;gap:14px;align-items:center;padding:13px 15px;margin-bottom:13px}
+.folder-toolbar-actions{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+.folder-breadcrumb{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px}
+.breadcrumb-link{border:0;background:none;padding:0;color:var(--blue);font-weight:750;cursor:pointer;font-size:13px}.breadcrumb-link:hover{text-decoration:underline}
+.browser-section-title{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:17px 2px 9px}.browser-section-title h2{margin:0;font-size:16px;color:#344054}
+.browser-empty{grid-column:1/-1;background:#fff;border:1px dashed var(--line);border-radius:13px}
+.area-file-table .doc-actions{min-width:190px}.upload-zone input[type=file]{max-width:310px}
+@media(max-width:1180px){.content-browser-layout{grid-template-columns:230px minmax(0,1fr)}}
+@media(max-width:900px){.content-browser-layout{grid-template-columns:1fr}.folder-panel{position:static;max-height:none}.folder-panel .card-body{max-height:280px}}
+@media(max-width:780px){
+  .folder-toolbar{align-items:flex-start;flex-direction:column}.folder-toolbar-actions{width:100%;justify-content:flex-start}.folder-toolbar-actions .btn{min-height:40px}
+  .folder-panel .card-body{max-height:240px}.folder-node{min-height:42px}.upload-zone input[type=file]{max-width:100%;width:100%}
+  #view-meetings .area-file-table thead,#view-knowledge .area-file-table thead{display:none}
+  #view-meetings .area-file-table,#view-meetings .area-file-table tbody,#view-meetings .area-file-table tr,#view-meetings .area-file-table td,
+  #view-knowledge .area-file-table,#view-knowledge .area-file-table tbody,#view-knowledge .area-file-table tr,#view-knowledge .area-file-table td{display:block;width:100%}
+  #view-meetings .area-file-table tr,#view-knowledge .area-file-table tr{border-bottom:8px solid var(--bg);padding:7px 10px;background:#fff}
+  #view-meetings .area-file-table td,#view-knowledge .area-file-table td{border:0;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:12px;padding:8px 4px;text-align:right}
+  #view-meetings .area-file-table td:last-child,#view-knowledge .area-file-table td:last-child{border-bottom:0}
+  #view-meetings .area-file-table td:before,#view-knowledge .area-file-table td:before{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:800;text-align:left;flex:0 0 30%}
+  #view-meetings .area-file-table td:nth-child(1):before,#view-knowledge .area-file-table td:nth-child(1):before{content:"Datei"}
+  #view-meetings .area-file-table td:nth-child(2):before,#view-knowledge .area-file-table td:nth-child(2):before{content:"Typ"}
+  #view-meetings .area-file-table td:nth-child(3):before,#view-knowledge .area-file-table td:nth-child(3):before{content:"Größe"}
+  #view-meetings .area-file-table td:nth-child(4):before,#view-knowledge .area-file-table td:nth-child(4):before{content:"Datum"}
+  #view-meetings .area-file-table td:nth-child(5):before,#view-knowledge .area-file-table td:nth-child(5):before{content:"Aktion"}
+}
+@media(max-width:480px){.folder-node{padding-left:calc(7px + var(--folder-level,0)*10px)}.folder-toolbar-actions{display:grid;grid-template-columns:1fr 1fr}.folder-toolbar-actions .btn{width:100%}.doc-actions{justify-content:flex-end}}
+
+
+/* V-Planer 1.0 – Projektfortschritt aus Projektaufgaben */
+.project-card-with-tasks{display:flex;flex-direction:column}
+.project-progress-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-top:14px;font-size:12px;color:var(--muted)}
+.project-progress-head b{font-size:18px;color:var(--blue-dark)}
+.project-progress{margin-top:7px}
+.project-progress-note{font-size:11px;color:var(--muted);margin-top:7px}
+.project-task-section{border-top:1px solid var(--line);margin-top:15px;padding-top:12px}
+.project-task-section-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:8px}
+.project-task-section-head strong{font-size:13px;color:#344054}
+.project-task-list{display:flex;flex-direction:column;gap:5px}
+.project-task-row{display:grid;grid-template-columns:27px minmax(0,1fr) auto;gap:7px;align-items:center;border:1px solid var(--line);border-radius:9px;padding:6px 8px;background:#fff}
+.project-task-row:hover{background:#f8fbfe}
+.project-task-row.is-done{opacity:.68;background:#f8fafc}
+.project-task-check{display:grid;place-items:center;cursor:pointer}
+.project-task-check input{width:17px;height:17px;margin:0;accent-color:var(--green)}
+.project-task-title{border:0;background:none;text-align:left;padding:3px 0;cursor:pointer;font-weight:650;color:#344054;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.project-task-title:hover{color:var(--blue)}
+.project-task-row.is-done .project-task-title{text-decoration:line-through}
+.project-task-due{font-size:10px;font-weight:750;padding:4px 7px;border-radius:999px;background:#f2f4f7;color:#667085;white-space:nowrap}
+.project-task-empty{padding:10px;font-size:11px}
+.project-card-actions{margin-top:12px}
+.project-modal-progress{border:1px solid var(--line);border-radius:11px;background:#f8fafc;padding:12px;display:grid;grid-template-columns:1fr auto;gap:6px 12px;align-items:center}
+.project-modal-progress span{font-size:11px;color:var(--muted)}
+.project-modal-progress .progress{grid-column:1/-1;margin:0}
+@media(max-width:700px){
+  .project-progress-head{align-items:flex-start;flex-direction:column;gap:3px}
+  .project-task-row{grid-template-columns:28px minmax(0,1fr)}
+  .project-task-due{grid-column:2;justify-self:start}
+  .project-card-actions{align-items:flex-start;flex-direction:column;gap:8px}
+  .project-modal-progress{grid-template-columns:1fr}
+  .project-modal-progress .progress{grid-column:1}
+}
+@media(max-width:480px){
+  .project-task-section-head{align-items:stretch;flex-direction:column}
+  .project-task-section-head .btn{width:100%;min-height:40px}
+  .project-task-row{padding:8px}
+}
+
+
+/* V-Planer 1.0 – mehrtägige Termine mit Von/Bis-Zeiten */
+.cal-chip.multi-day{background:linear-gradient(90deg,var(--blue-soft),#f1f8ff);border-left:3px solid var(--blue);padding-left:5px}
+.event-row .mini-meta{line-height:1.45}
+@media(max-width:700px){
+  #modal .form-section+label{min-width:0}
+  .cal-chip.multi-day{font-size:9px}
+}
+
+
+/* V-Planer 1.0 – interaktive farbige Termine in Kalender und Vereinsjahr */
+.cal-event-button{display:block;width:100%;border:0;text-align:left;cursor:pointer;background:var(--event-soft)!important;color:var(--event-color)!important;border-left:3px solid var(--event-color)!important;font:inherit}
+.cal-event-button:hover{filter:brightness(.96);box-shadow:inset 0 0 0 1px var(--event-color)}
+.cal-chip.multi-day.cal-event-button{background:var(--event-soft)!important;border-left:3px solid var(--event-color)!important}
+.event-row-button{width:100%;border:0;text-align:left;cursor:pointer;background:transparent;border-radius:10px;padding:6px;color:inherit}
+.event-row-button:hover{background:var(--event-soft)}
+.event-row-button .event-date-box{border:1px solid var(--event-color);color:var(--event-color)}
+.year-event-button{width:100%;border:0;border-left:3px solid var(--event-color);background:var(--event-soft);border-radius:8px;padding:7px 8px;display:grid;grid-template-columns:10px auto minmax(0,1fr);gap:6px 8px;align-items:center;text-align:left;cursor:pointer;color:#344054;margin:5px 0}
+.year-event-button:hover{box-shadow:inset 0 0 0 1px var(--event-color)}
+.year-event-button b{font-size:10px;white-space:nowrap}
+.year-event-button>span:not(.year-color-dot){overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:650}
+.year-event-button small{grid-column:3;color:var(--muted);font-size:9px}
+.year-color-dot{width:9px;height:9px;border-radius:50%}
+.event-detail{display:flex;flex-direction:column;gap:14px}
+.event-detail-accent{height:7px;border-radius:999px}
+.event-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.event-detail-grid .full-detail{grid-column:1/-1}
+.event-detail-summary{display:flex;justify-content:space-between;gap:12px;border:1px solid var(--line);background:#f8fafc;border-radius:10px;padding:11px 12px}
+.event-detail-summary span{color:var(--muted);text-align:right}
+.event-detail-color{display:flex;align-items:center;gap:9px;border-top:1px solid var(--line);padding-top:12px}
+.event-detail-color>span{width:24px;height:24px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px var(--line)}
+.event-detail-color code{margin-left:auto;color:var(--muted)}
+.event-detail-actions{display:flex;gap:9px;justify-content:flex-end;margin-top:4px}
+.event-color-input{height:46px;padding:4px;cursor:pointer}
+.event-color-preview{display:flex;align-items:center;gap:9px;align-self:end;min-height:46px}
+.event-color-preview span{width:34px;height:34px;border-radius:9px;border:3px solid #fff;box-shadow:0 0 0 1px var(--line)}
+.event-color-preview b{font-size:12px;color:var(--muted)}
+.event-color-palette{display:flex;flex-direction:column;gap:9px}
+.event-color-palette-label{font-size:12px;font-weight:750;color:#344054}
+.event-color-swatches{display:grid;grid-template-columns:repeat(5,minmax(74px,1fr));gap:8px}
+.event-color-choice{border:1px solid var(--line);background:#fff;border-radius:10px;padding:8px 5px;cursor:pointer;display:flex;align-items:center;gap:6px;justify-content:center;min-width:0}
+.event-color-choice:hover{border-color:#a8bdd1;background:#f8fbfe}
+.event-color-choice.active{border-color:var(--blue);box-shadow:0 0 0 2px rgba(22,119,200,.12)}
+.event-color-swatch{width:20px;height:20px;min-width:20px;border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,.1)}
+.event-color-choice small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#475467}
+@media(max-width:700px){
+  .event-detail-grid{grid-template-columns:1fr}
+  .event-detail-grid .full-detail{grid-column:1}
+  .event-detail-summary{flex-direction:column}
+  .event-detail-summary span{text-align:left}
+  .event-detail-actions{display:grid;grid-template-columns:1fr 1fr}
+  .event-color-swatches{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .event-color-choice{min-height:44px}
+}
+@media(max-width:420px){
+  .event-detail-actions{grid-template-columns:1fr}
+  .year-event-button{grid-template-columns:10px minmax(0,1fr)}
+  .year-event-button b{grid-column:2}
+  .year-event-button>span:not(.year-color-dot),.year-event-button small{grid-column:2}
+}
+
+
+/* V-Planer 1.0 – wiederverwendbare Mitgliedsnummern & sortierbare Mitgliederliste */
+.table-sort{border:0;background:transparent;padding:0;display:inline-flex;align-items:center;gap:3px;font:inherit;font-weight:800;color:inherit;cursor:pointer;white-space:nowrap}
+.table-sort:hover,.table-sort.active{color:var(--blue)}
+.sort-arrow{color:var(--blue);font-weight:900}
+.member-sort-mobile{display:none;gap:7px;align-items:center}
+.field-help{display:block;margin-top:5px;font-size:10px;line-height:1.35;color:var(--muted);font-weight:500}
+@media(max-width:780px){
+  .member-sort-mobile{display:grid;grid-template-columns:minmax(0,1fr) auto;width:100%}
+  .member-sort-mobile select,.member-sort-mobile .btn{min-height:42px}
+}
+@media(max-width:520px){
+  .member-sort-mobile{grid-template-columns:1fr}
+  .member-sort-mobile .btn{width:100%}
+}
+
+
+/* V-Planer 1.0 – Skalierung & Backup */
+:root{--ui-scale:1}
+.app-shell{zoom:var(--ui-scale)}
+.mobile-nav,.mobile-menu,dialog{zoom:var(--ui-scale)}
+@supports not (zoom:1){
+  html{font-size:calc(16px * var(--ui-scale))}
+}
+.scale-guide{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:-6px;margin-bottom:10px}
+.backup-setting-card{gap:12px}
+.backup-action{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;border:1px solid var(--line);border-radius:11px;padding:12px;background:#fff}
+.backup-action>div{display:flex;flex-direction:column;gap:4px}
+.backup-action small{color:var(--muted);font-size:11px;line-height:1.4}
+.backup-warning{border:1px solid #f1d38a;background:#fff9e8;border-radius:11px;padding:11px 12px;display:flex;flex-direction:column;gap:5px;color:#765c1d}
+.backup-warning span{font-size:11px;line-height:1.45}
+@media(max-width:700px){
+  .backup-action{grid-template-columns:1fr}
+  .backup-action .btn{width:100%;min-height:42px}
+}
+
+
+/* V-Planer 1.0 – Dashboard-Scroll & Aufgabeninformationen */
+.dashboard-scroll-list{max-height:340px;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+.dashboard-scroll-list::-webkit-scrollbar{width:8px}
+.dashboard-scroll-list::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:999px}
+.dashboard-scroll-list::-webkit-scrollbar-track{background:transparent}
+.task-table-description{margin-top:4px;max-width:340px;color:var(--muted);font-size:10px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.task-table-attachments{margin-top:4px;color:var(--blue);font-size:10px;font-weight:700}
+.task-attachment-box{border:1px solid var(--line);border-radius:12px;background:#f8fafc;padding:12px}
+.task-attachment-upload{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+.task-attachment-upload input[type=file]{width:100%}
+.task-attachment-upload small{color:var(--muted);line-height:1.4}
+.task-attachment-row{display:flex;justify-content:space-between;gap:12px;align-items:center;border-top:1px solid var(--line);padding:9px 0}
+.task-attachment-row:first-child{border-top:0}
+.task-attachment-info{display:flex;gap:8px;align-items:center;min-width:0}
+.task-attachment-info>div{min-width:0;display:flex;flex-direction:column}
+.task-attachment-info b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.task-attachment-info small{color:var(--muted);font-size:10px}
+.task-attachment-icon{font-size:18px}
+.task-attachment-actions{display:flex;gap:8px;align-items:center;white-space:nowrap}
+.task-attachment-empty{font-size:11px;color:var(--muted);padding:4px 0}
+.project-task-title{display:flex;flex-direction:column;align-items:flex-start}
+.project-task-title>span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.project-task-title small{max-width:100%;margin-top:2px;color:var(--muted);font-size:9px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.project-task-title em{margin-top:2px;color:var(--blue);font-size:9px;font-style:normal;font-weight:700}
+@media(max-width:900px){
+  .dashboard-scroll-list{max-height:310px}
+}
+@media(max-width:700px){
+  .dashboard-scroll-list{max-height:300px}
+  .task-attachment-row{align-items:flex-start;flex-direction:column}
+  .task-attachment-actions{width:100%;justify-content:flex-end}
+}
+
+
+/* V-Planer 1.0 – Archiv für abgeschlossene Aufgaben und Projekte */
+.archive-link{color:#6b4fa3!important}
+.archive-link:hover{text-decoration:underline}
+.archive-summary{display:grid;grid-template-columns:repeat(2,minmax(0,220px));gap:12px;margin-bottom:14px}
+.archive-metric{padding:16px}
+.archive-metric span{display:block;color:var(--muted);font-size:11px;font-weight:700}
+.archive-metric b{display:block;font-size:27px;color:var(--blue-dark);margin:5px 0 2px}
+.archive-metric small{color:var(--muted)}
+.archive-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+.archive-list{display:flex;flex-direction:column;gap:8px;max-height:620px;overflow-y:auto}
+.archive-item{display:grid;grid-template-columns:38px minmax(0,1fr) auto;gap:10px;align-items:center;border:1px solid var(--line);border-radius:11px;padding:10px;background:#fff}
+.archive-item:hover{background:#fafbfc}
+.archive-icon{width:36px;height:36px;border-radius:10px;background:#f2f4f7;display:grid;place-items:center;font-size:17px}
+.archive-copy{min-width:0;display:flex;flex-direction:column;gap:3px}
+.archive-copy b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#344054}
+.archive-copy span,.archive-copy small,.archive-copy em{font-size:10px;line-height:1.35;color:var(--muted);font-style:normal}
+.archive-copy small{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.archive-copy em{color:#6b4fa3;font-weight:650}
+@media(max-width:980px){
+  .archive-grid{grid-template-columns:1fr}
+  .archive-list{max-height:480px}
+}
+@media(max-width:650px){
+  .archive-summary{grid-template-columns:1fr 1fr}
+  .archive-item{grid-template-columns:34px minmax(0,1fr)}
+  .archive-item>.btn{grid-column:2;width:100%;min-height:40px}
+}
+@media(max-width:430px){
+  .archive-summary{grid-template-columns:1fr}
+}
+
+
+/* V-Planer 1.0 – sortierbare Aufgabenliste */
+.task-sort-mobile{display:none;gap:7px;align-items:center}
+.task-table .table-sort{justify-content:flex-start}
+@media(max-width:780px){
+  .task-sort-mobile{display:grid;grid-template-columns:minmax(0,1fr) auto;width:100%}
+  .task-sort-mobile select,.task-sort-mobile .btn{min-height:42px}
+}
+@media(max-width:520px){
+  .task-sort-mobile{grid-template-columns:1fr}
+  .task-sort-mobile .btn{width:100%}
+}
+
+
+/* V-Planer 1.0 – identische Sortierung für Aufgaben und Mitglieder */
+.member-table .table-sort,.task-table .table-sort{justify-content:flex-start}
+.member-table th[aria-sort="ascending"] .table-sort,
+.member-table th[aria-sort="descending"] .table-sort,
+.task-table th[aria-sort="ascending"] .table-sort,
+.task-table th[aria-sort="descending"] .table-sort{color:var(--blue)}

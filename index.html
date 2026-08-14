@@ -32,6 +32,7 @@
       <button class="nav-btn" data-view="kanban">▦ <span>Kanban</span></button>
       <button class="nav-btn" data-view="calendar">📅 <span>Kalender</span></button>
       <button class="nav-btn" data-view="year">🗓 <span>Vereinsjahr</span></button>
+      <button class="nav-btn" data-view="archive">🗄️ <span>Archiv</span></button>
 
       <div class="nav-module" data-module="club">
         <div class="nav-section">Verein</div>
@@ -117,9 +118,28 @@
         <div class="toolbar">
           <input class="search" id="taskSearch" placeholder="Aufgaben durchsuchen …">
           <select id="taskStatusFilter"><option value="">Alle Status</option><option value="open">Offen</option><option value="doing">In Arbeit</option><option value="wait">Warten</option><option value="done">Erledigt</option></select>
+          <div class="task-sort-mobile">
+            <select id="taskSortSelect" aria-label="Aufgaben sortieren">
+              <option value="due">Fälligkeit</option>
+              <option value="title">Aufgabe</option>
+              <option value="project">Projekt</option>
+              <option value="group">Gruppe</option>
+              <option value="priority">Priorität</option>
+              <option value="status">Status</option>
+            </select>
+            <button class="btn secondary" id="taskSortDir" type="button">↑ Aufsteigend</button>
+          </div>
           <button class="btn primary" data-action="new-task">+ Aufgabe</button>
         </div>
-        <div class="card table-card"><div class="table-wrap"><table class="table"><thead><tr><th>Aufgabe</th><th>Projekt</th><th>Gruppe</th><th>Fällig</th><th>Priorität</th><th>Status</th><th></th></tr></thead><tbody id="taskTable"></tbody></table></div></div>
+        <div class="card table-card"><div class="table-wrap"><table class="table task-table"><thead><tr>
+            <th aria-sort="none"><button class="table-sort" type="button" data-task-sort="title">Aufgabe</button></th>
+            <th aria-sort="none"><button class="table-sort" type="button" data-task-sort="project">Projekt</button></th>
+            <th aria-sort="none"><button class="table-sort" type="button" data-task-sort="group">Gruppe</button></th>
+            <th aria-sort="ascending"><button class="table-sort active" type="button" data-task-sort="due">Fällig <span class="sort-arrow" aria-hidden="true">↑</span></button></th>
+            <th aria-sort="none"><button class="table-sort" type="button" data-task-sort="priority">Priorität</button></th>
+            <th aria-sort="none"><button class="table-sort" type="button" data-task-sort="status">Status</button></th>
+            <th>Aktionen</th>
+          </tr></thead><tbody id="taskTable"></tbody></table></div></div>
       </section>
 
       <section class="view" id="view-projects">
@@ -143,14 +163,49 @@
 
       <section class="view" id="view-year"><div class="year-grid" id="yearGrid"></div></section>
 
+      <section class="view" id="view-archive">
+        <div class="archive-summary">
+          <div class="card archive-metric"><span>Archivierte Aufgaben</span><b id="archiveTaskCount">0</b><small>Erledigte Aufgaben</small></div>
+          <div class="card archive-metric"><span>Archivierte Projekte</span><b id="archiveProjectCount">0</b><small>Abgeschlossene Projekte</small></div>
+        </div>
+        <div class="archive-grid">
+          <div class="card">
+            <div class="card-head"><div><h2>Aufgabenarchiv</h2><small class="muted">Erledigte Aufgaben, die nicht mehr in den aktiven Listen erscheinen.</small></div></div>
+            <div class="card-body archive-list" id="archiveTasks"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div><h2>Projektarchiv</h2><small class="muted">Abgeschlossene Projekte inklusive ihrer Historie.</small></div></div>
+            <div class="card-body archive-list" id="archiveProjects"></div>
+          </div>
+        </div>
+      </section>
+
       <section class="view" id="view-members">
         <div class="toolbar">
           <input class="search" id="memberSearch" placeholder="Mitglieder suchen …">
           <select id="memberStatusFilter"><option value="">Alle Status</option><option value="active">Aktiv</option><option value="inactive">Deaktiviert</option><option value="passive">Passiv</option><option value="deceased">Verstorben</option></select>
+          <div class="member-sort-mobile">
+            <select id="memberSortSelect" aria-label="Mitglieder sortieren">
+              <option value="number">Nummer</option>
+              <option value="name">Name</option>
+              <option value="status">Status</option>
+              <option value="age">Alter</option>
+              <option value="groups">Gruppen</option>
+              <option value="next">Nächster Termin</option>
+            </select>
+            <button class="btn secondary" id="memberSortDir" type="button">↑ Aufsteigend</button>
+          </div>
           <button class="btn primary" data-action="new-member">+ Mitglied</button>
         </div>
         <div class="member-layout">
-          <div class="card table-card"><div class="table-wrap"><table class="table"><thead><tr><th>Nr.</th><th>Name</th><th>Status</th><th>Alter</th><th>Gruppen</th><th>Nächster Termin</th></tr></thead><tbody id="memberTable"></tbody></table></div></div>
+          <div class="card table-card"><div class="table-wrap"><table class="table member-table"><thead><tr>
+            <th aria-sort="none"><button class="table-sort" type="button" data-member-sort="number">Nr.</button></th>
+            <th aria-sort="ascending"><button class="table-sort active" type="button" data-member-sort="name">Name <span class="sort-arrow" aria-hidden="true">↑</span></button></th>
+            <th aria-sort="none"><button class="table-sort" type="button" data-member-sort="status">Status</button></th>
+            <th aria-sort="none"><button class="table-sort" type="button" data-member-sort="age">Alter</button></th>
+            <th aria-sort="none"><button class="table-sort" type="button" data-member-sort="groups">Gruppen</button></th>
+            <th aria-sort="none"><button class="table-sort" type="button" data-member-sort="next">Nächster Termin</button></th>
+          </tr></thead><tbody id="memberTable"></tbody></table></div></div>
           <div class="card member-detail"><div class="card-head"><h2>Mitglied</h2></div><div class="card-body" id="memberDetail"></div></div>
         </div>
       </section>
@@ -167,19 +222,93 @@
       </section>
 
       <section class="view" id="view-meetings">
-        <div class="toolbar"><button class="btn primary" data-action="new-meeting">+ Sitzung</button></div>
-        <div class="cards-grid" id="meetingGrid"></div>
+        <div class="toolbar">
+          <button class="btn primary" data-action="new-meeting">+ Sitzung</button>
+          <button class="btn secondary" type="button" data-new-folder="meetings">+ Ordner</button>
+        </div>
+        <div class="content-browser-layout">
+          <aside class="card folder-panel">
+            <div class="card-head"><h2>Ordner</h2></div>
+            <div class="card-body folder-tree" id="meetingFolderTree"></div>
+          </aside>
+          <div class="browser-main">
+            <div class="card folder-toolbar">
+              <div><small class="muted">Aktueller Ordner</small><div class="folder-breadcrumb" id="meetingFolderPath"></div></div>
+              <div class="folder-toolbar-actions">
+                <button class="btn tiny secondary" type="button" data-rename-folder="meetings">Umbenennen</button>
+                <button class="btn tiny danger" type="button" data-delete-folder="meetings">Ordner löschen</button>
+              </div>
+            </div>
+            <div class="card upload-card"><div class="upload-zone">
+              <div><h3>Datei ablegen</h3><p>Word, PDF, Excel, Bilder und weitere Dateien im aktuellen Ordner.</p></div>
+              <input id="meetingFileInput" type="file" multiple>
+              <button class="btn primary" id="meetingUploadBtn" type="button">In Drive hochladen</button>
+            </div></div>
+            <div class="browser-section-title"><h2>Sitzungen & Beschlüsse</h2><span id="meetingFolderCount" class="mini-meta"></span></div>
+            <div class="cards-grid" id="meetingGrid"></div>
+            <div class="browser-section-title"><h2>Dateien</h2></div>
+            <div class="card table-card"><div class="table-wrap"><table class="table area-file-table"><thead><tr><th>Name</th><th>Typ</th><th>Größe</th><th>Datum</th><th></th></tr></thead><tbody id="meetingFileTable"></tbody></table></div></div>
+          </div>
+        </div>
       </section>
 
       <section class="view" id="view-documents">
-        <div class="doc-categories" id="docCategories"></div>
-        <div class="card upload-card"><div class="upload-zone"><div><h3>Datei hochladen</h3><p>Quittungen, Protokolle, PDFs oder Bilder.</p></div><input id="fileInput" type="file" multiple accept="image/*,.pdf,application/pdf"><select id="docCategory"><option>Quittungen</option><option>Protokolle</option><option>Dokumente</option><option>Bilder</option></select><button class="btn primary" id="uploadBtn">In Drive hochladen</button></div></div>
-        <div class="card table-card"><div class="table-wrap"><table class="table"><thead><tr><th>Name</th><th>Kategorie</th><th>Größe</th><th>Datum</th><th></th></tr></thead><tbody id="docTable"></tbody></table></div></div>
+        <div class="toolbar"><button class="btn secondary" type="button" data-new-folder="documents">+ Ordner</button></div>
+        <div class="content-browser-layout">
+          <aside class="card folder-panel">
+            <div class="card-head"><h2>Ordner</h2></div>
+            <div class="card-body folder-tree" id="documentFolderTree"></div>
+          </aside>
+          <div class="browser-main">
+            <div class="card folder-toolbar">
+              <div><small class="muted">Aktueller Ordner</small><div class="folder-breadcrumb" id="documentFolderPath"></div></div>
+              <div class="folder-toolbar-actions">
+                <button class="btn tiny secondary" type="button" data-rename-folder="documents">Umbenennen</button>
+                <button class="btn tiny danger" type="button" data-delete-folder="documents">Ordner löschen</button>
+              </div>
+            </div>
+            <div class="doc-categories" id="docCategories"></div>
+            <div class="card upload-card"><div class="upload-zone">
+              <div><h3>Datei hochladen</h3><p>Word, PDF, Excel, Präsentationen, Bilder und weitere Dateien.</p></div>
+              <input id="fileInput" type="file" multiple>
+              <select id="docCategory"><option>Quittungen</option><option>Protokolle</option><option>Dokumente</option><option>Bilder</option></select>
+              <button class="btn primary" id="uploadBtn" type="button">In Drive hochladen</button>
+            </div></div>
+            <div class="card table-card"><div class="table-wrap"><table class="table area-file-table"><thead><tr><th>Name</th><th>Kategorie</th><th>Größe</th><th>Datum</th><th></th></tr></thead><tbody id="docTable"></tbody></table></div></div>
+          </div>
+        </div>
       </section>
 
       <section class="view" id="view-knowledge">
-        <div class="toolbar"><input class="search" id="knowledgeSearch" placeholder="Vereinswissen durchsuchen …"><button class="btn primary" data-action="new-knowledge">+ Eintrag</button></div>
-        <div class="cards-grid" id="knowledgeGrid"></div>
+        <div class="toolbar">
+          <input class="search" id="knowledgeSearch" placeholder="Vereinswissen im aktuellen Ordner durchsuchen …">
+          <button class="btn primary" data-action="new-knowledge">+ Eintrag</button>
+          <button class="btn secondary" type="button" data-new-folder="knowledge">+ Ordner</button>
+        </div>
+        <div class="content-browser-layout">
+          <aside class="card folder-panel">
+            <div class="card-head"><h2>Ordner</h2></div>
+            <div class="card-body folder-tree" id="knowledgeFolderTree"></div>
+          </aside>
+          <div class="browser-main">
+            <div class="card folder-toolbar">
+              <div><small class="muted">Aktueller Ordner</small><div class="folder-breadcrumb" id="knowledgeFolderPath"></div></div>
+              <div class="folder-toolbar-actions">
+                <button class="btn tiny secondary" type="button" data-rename-folder="knowledge">Umbenennen</button>
+                <button class="btn tiny danger" type="button" data-delete-folder="knowledge">Ordner löschen</button>
+              </div>
+            </div>
+            <div class="card upload-card"><div class="upload-zone">
+              <div><h3>Datei zum Vereinswissen ablegen</h3><p>Zum Beispiel Anleitungen, Word-Dateien, PDFs oder Vorlagen.</p></div>
+              <input id="knowledgeFileInput" type="file" multiple>
+              <button class="btn primary" id="knowledgeUploadBtn" type="button">In Drive hochladen</button>
+            </div></div>
+            <div class="browser-section-title"><h2>Wissenseinträge</h2><span id="knowledgeFolderCount" class="mini-meta"></span></div>
+            <div class="cards-grid" id="knowledgeGrid"></div>
+            <div class="browser-section-title"><h2>Dateien</h2></div>
+            <div class="card table-card"><div class="table-wrap"><table class="table area-file-table"><thead><tr><th>Name</th><th>Typ</th><th>Größe</th><th>Datum</th><th></th></tr></thead><tbody id="knowledgeFileTable"></tbody></table></div></div>
+          </div>
+        </div>
       </section>
 
       <section class="view" id="view-storage">
@@ -198,10 +327,29 @@
           </div>
 
           <div class="card setting-card">
+            <h2>Darstellung & Skalierung</h2>
+            <p class="setting-help">Passe die Größe der gesamten V-Planer-Oberfläche an dein Gerät und deine bevorzugte Darstellung an.</p>
+            <label>Oberflächengröße <b id="uiScaleLabel">100%</b>
+              <input id="uiScale" type="range" min="80" max="125" step="5" value="100">
+            </label>
+            <div class="scale-guide"><span>80%</span><span>100%</span><span>125%</span></div>
+            <button class="btn secondary" id="resetUiScaleBtn" type="button">Auf 100% zurücksetzen</button>
+          </div>
+
+
+          <div class="card setting-card">
             <h2>Bereiche ein-/ausblenden</h2>
             <p class="setting-help">Die Daten bleiben erhalten. Es wird nur die Navigation ausgeblendet.</p>
             <div class="switch-row"><div><b>Verein</b><small>Mitglieder, Gruppen, Sitzungen</small></div><label class="switch"><input id="moduleClub" type="checkbox"><span></span></label></div>
             <div class="switch-row"><div><b>Dokumente</b><small>Dokumente, Bilder, Vereinswissen</small></div><label class="switch"><input id="moduleDocuments" type="checkbox"><span></span></label></div>
+          </div>
+
+          <div class="card setting-card group-types-setting" data-module="club">
+            <h2>Gruppenarten</h2>
+            <p class="setting-help">Lege fest, welche Arten beim Erstellen einer Gruppe zur Auswahl stehen. Du kannst die Namen ändern, Einträge hinzufügen oder entfernen und die Reihenfolge anpassen.</p>
+            <div id="groupTypeList" class="group-type-list"></div>
+            <button class="btn secondary group-type-add" id="addGroupTypeBtn" type="button">+ Gruppenart hinzufügen</button>
+            <p class="setting-help group-type-note">Das Entfernen einer Gruppenart löscht keine bereits vorhandenen Gruppen. Bestehende Einträge behalten ihre bisherige Bezeichnung.</p>
           </div>
 
           <div class="card setting-card">
@@ -213,6 +361,33 @@
             <label>Alarm ab <b id="alarmDaysLabel">2</b> Tagen vorher<input id="alarmDays" type="range" min="0" max="14"></label>
             <div class="switch-row"><div><b>Geburtstage in dieser Woche</b><small>Hinweis auf der Übersicht</small></div><label class="switch"><input id="birthdayWeekReminder" type="checkbox"><span></span></label></div>
             <div class="switch-row"><div><b>Jubiläen erinnern</b><small>Eintrittsjubiläen auf der Übersicht</small></div><label class="switch"><input id="jubileeReminder" type="checkbox"><span></span></label></div>
+          </div>
+
+          <div class="card setting-card backup-setting-card">
+            <h2>Backup & Wiederherstellung</h2>
+            <p class="setting-help">Sichere den kompletten strukturierten V-Planer-Datenbestand als JSON-Datei oder stelle ihn später wieder her.</p>
+
+            <div class="backup-action">
+              <div>
+                <b>Komplettes Backup exportieren</b>
+                <small>Mitglieder, Aufgaben, Projekte, Termine, Gruppen, Sitzungen, Vereinswissen, Ordner, Einstellungen und Dokument-Metadaten.</small>
+              </div>
+              <button class="btn primary" id="exportBackupBtn" type="button">Backup exportieren</button>
+            </div>
+
+            <div class="backup-action">
+              <div>
+                <b>Backup importieren</b>
+                <small>Ersetzt nach Sicherheitsabfrage den aktuellen Datenstand. Vor dem Import wird automatisch ein Sicherungsbackup erzeugt.</small>
+              </div>
+              <button class="btn secondary" id="importBackupBtn" type="button">Backup importieren</button>
+              <input id="backupImportInput" type="file" accept=".json,application/json" hidden>
+            </div>
+
+            <div class="backup-warning">
+              <b>Hinweis zu Google-Drive-Dateien</b>
+              <span>Das Backup enthält die vollständige V-Planer-Datenbank inklusive Ordnerstruktur und Dateiverweisen. Die eigentlichen hochgeladenen Word-/PDF-/Bilddateien bleiben in Google Drive gespeichert und werden nicht nochmals in die JSON-Datei eingebettet.</span>
+            </div>
           </div>
 
           <div class="card setting-card">
@@ -245,6 +420,7 @@
     <div class="mobile-menu-section">Planung</div>
     <button data-view="kanban">▦ Kanban</button>
     <button data-view="year">🗓 Vereinsjahr</button>
+    <button data-view="archive">🗄️ Archiv</button>
     <div class="mobile-menu-section" data-module="club">Verein</div>
     <button data-view="members" data-module="club">👥 Mitglieder</button>
     <button data-view="groups" data-module="club">🌳 Gruppen</button>
