@@ -1,0 +1,7 @@
+window.VP_CONFIG = {
+  GOOGLE_CLIENT_ID: "",
+  APP_NAME: "V-Planer",
+  ROOT_FOLDER_NAME: "Vereinsplanung",
+  DEFAULT_STORAGE_LIMIT_GB: 5,
+  AUTO_SYNC_SECONDS: 30
+};

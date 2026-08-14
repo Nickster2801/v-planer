@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#075aa8">
+  <meta name="description" content="V-Planer – Vereinsplanung, Mitglieder, Gruppen, Projekte und Dokumente.">
+  <title>V-Planer · Dein Verein. Einfach organisiert.</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="config.js"></script>
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <img class="brand-logo" src="assets/v-planer-logo.png" alt="V-Planer Logo">
+      <div class="brand-copy">
+        <strong>V-Planer</strong>
+        <small><span>Dein Verein.</span> Einfach organisiert.</small>
+      </div>
+    </div>
+
+    <nav id="mainNav">
+      <button class="nav-btn active" data-view="dashboard">🏠 <span>Übersicht</span></button>
+
+      <div class="nav-section">Planung</div>
+      <button class="nav-btn" data-view="tasks">✅ <span>Aufgaben</span></button>
+      <button class="nav-btn" data-view="projects">📁 <span>Projekte</span></button>
+      <button class="nav-btn" data-view="kanban">▦ <span>Kanban</span></button>
+      <button class="nav-btn" data-view="calendar">📅 <span>Kalender</span></button>
+      <button class="nav-btn" data-view="year">🗓 <span>Vereinsjahr</span></button>
+
+      <div class="nav-module" data-module="club">
+        <div class="nav-section">Verein</div>
+        <button class="nav-btn" data-view="members">👥 <span>Mitglieder</span></button>
+        <button class="nav-btn" data-view="groups">🌳 <span>Gruppen</span></button>
+        <button class="nav-btn" data-view="meetings">📝 <span>Sitzungen & Beschlüsse</span></button>
+      </div>
+
+      <div class="nav-module" data-module="documents">
+        <div class="nav-section">Dokumente</div>
+        <button class="nav-btn" data-view="documents">📄 <span>Dokumente & Bilder</span></button>
+        <button class="nav-btn" data-view="knowledge">📚 <span>Vereinswissen</span></button>
+      </div>
+
+      <div class="nav-section">System</div>
+      <button class="nav-btn" data-view="storage">☁️ <span>Speicher & Sync</span></button>
+      <button class="nav-btn" data-view="settings">⚙️ <span>Einstellungen</span></button>
+    </nav>
+
+    <div class="sidebar-footer">
+      <small>V-Planer Cloud · 1.0</small>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="top-title">
+        <img class="mobile-logo" src="assets/v-planer-logo.png" alt="V-Planer">
+        <div>
+          <h1 id="pageTitle">Übersicht</h1>
+          <div id="pageSubtitle" class="subtitle">Heute, diese Woche und alles Wichtige im Blick.</div>
+        </div>
+      </div>
+      <div class="top-actions">
+        <div class="sync-indicator">
+          <strong id="driveState">● Nur lokal</strong>
+          <small id="lastSync">Noch nicht synchronisiert</small>
+        </div>
+        <button class="btn secondary" id="syncBtn">↻ Synchronisieren</button>
+        <button class="btn primary" id="quickCreateBtn">+ Neu erstellen</button>
+      </div>
+    </header>
+
+    <div class="content">
+      <section class="view active" id="view-dashboard">
+        <div id="alertStrip" class="alert-strip hidden"></div>
+
+        <div class="metrics">
+          <div class="card metric"><span>Offene Aufgaben</span><b id="metricOpenTasks">0</b><small id="metricTaskHint">Heute 0 · Woche 0</small></div>
+          <div class="card metric"><span>Aktive Projekte</span><b id="metricProjects">0</b><small id="metricProjectHint">0 mit Termin</small></div>
+          <div class="card metric"><span>Mitglieder</span><b id="metricMembers">0</b><small id="metricMemberHint">0 aktiv</small></div>
+          <div class="card metric"><span>Geburtstage</span><b id="metricBirthdays">0</b><small>heute / diese Woche</small></div>
+        </div>
+
+        <div class="dash-grid two">
+          <div class="card">
+            <div class="card-head"><h2>Heute & diese Woche</h2><button class="link-btn" data-go="tasks">Alle Aufgaben</button></div>
+            <div class="card-body" id="dashboardTasks"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h2>Aktive Projekte</h2><button class="link-btn" data-go="projects">Alle Projekte</button></div>
+            <div class="card-body" id="dashboardProjects"></div>
+          </div>
+        </div>
+
+        <div class="dash-grid three">
+          <div class="card">
+            <div class="card-head"><h2>Geburtstage & Jubiläen</h2><button class="link-btn" data-go="members">Mitglieder</button></div>
+            <div class="card-body" id="dashboardBirthdays"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h2>Nächste Termine</h2><button class="link-btn" data-go="calendar">Kalender</button></div>
+            <div class="card-body" id="dashboardEvents"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h2>Speicher & Synchronisation</h2></div>
+            <div class="card-body" id="dashboardStorage"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-tasks">
+        <div class="toolbar">
+          <input class="search" id="taskSearch" placeholder="Aufgaben durchsuchen …">
+          <select id="taskStatusFilter"><option value="">Alle Status</option><option value="open">Offen</option><option value="doing">In Arbeit</option><option value="wait">Warten</option><option value="done">Erledigt</option></select>
+          <button class="btn primary" data-action="new-task">+ Aufgabe</button>
+        </div>
+        <div class="card table-card"><div class="table-wrap"><table class="table"><thead><tr><th>Aufgabe</th><th>Projekt</th><th>Gruppe</th><th>Fällig</th><th>Priorität</th><th>Status</th><th></th></tr></thead><tbody id="taskTable"></tbody></table></div></div>
+      </section>
+
+      <section class="view" id="view-projects">
+        <div class="toolbar">
+          <input class="search" id="projectSearch" placeholder="Projekte durchsuchen …">
+          <select id="projectStatusFilter"><option value="">Alle Status</option><option value="planned">Geplant</option><option value="active">Aktiv</option><option value="paused">Pausiert</option><option value="closed">Abgeschlossen</option></select>
+          <button class="btn primary" data-action="new-project">+ Projekt</button>
+        </div>
+        <div class="cards-grid" id="projectGrid"></div>
+      </section>
+
+      <section class="view" id="view-kanban"><div class="board" id="kanbanBoard"></div></section>
+
+      <section class="view" id="view-calendar">
+        <div class="toolbar"><button class="btn primary" data-action="new-event">+ Termin</button></div>
+        <div class="calendar-layout">
+          <div class="card calendar-card"><div class="calendar-head"><button id="prevMonth">‹</button><h2 id="calendarTitle"></h2><button id="nextMonth">›</button></div><div class="calendar-grid" id="calendarGrid"></div></div>
+          <div class="card"><div class="card-head"><h2>Termine & Geburtstage</h2></div><div class="card-body" id="calendarSideList"></div></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-year"><div class="year-grid" id="yearGrid"></div></section>
+
+      <section class="view" id="view-members">
+        <div class="toolbar">
+          <input class="search" id="memberSearch" placeholder="Mitglieder suchen …">
+          <select id="memberStatusFilter"><option value="">Alle Status</option><option value="active">Aktiv</option><option value="inactive">Deaktiviert</option><option value="passive">Passiv</option><option value="deceased">Verstorben</option></select>
+          <button class="btn primary" data-action="new-member">+ Mitglied</button>
+        </div>
+        <div class="member-layout">
+          <div class="card table-card"><div class="table-wrap"><table class="table"><thead><tr><th>Nr.</th><th>Name</th><th>Status</th><th>Alter</th><th>Gruppen</th><th>Nächster Termin</th></tr></thead><tbody id="memberTable"></tbody></table></div></div>
+          <div class="card member-detail"><div class="card-head"><h2>Mitglied</h2></div><div class="card-body" id="memberDetail"></div></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-groups">
+        <div class="toolbar">
+          <button class="btn primary" data-action="new-group">+ Gruppe</button>
+          <button class="btn secondary" id="newFunctionBtn">+ Funktion</button>
+        </div>
+        <div class="group-layout">
+          <div class="card"><div class="card-head"><h2>Gruppenstruktur</h2></div><div class="card-body tree" id="groupTree"></div></div>
+          <div class="card"><div class="card-head"><h2 id="groupDetailTitle">Gruppendetails</h2><div class="head-actions"><button class="btn tiny secondary" id="editGroupBtn">Bearbeiten</button><button class="btn tiny danger" id="deleteGroupBtn">Löschen</button></div></div><div class="card-body" id="groupDetail"></div></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-meetings">
+        <div class="toolbar"><button class="btn primary" data-action="new-meeting">+ Sitzung</button></div>
+        <div class="cards-grid" id="meetingGrid"></div>
+      </section>
+
+      <section class="view" id="view-documents">
+        <div class="doc-categories" id="docCategories"></div>
+        <div class="card upload-card"><div class="upload-zone"><div><h3>Datei hochladen</h3><p>Quittungen, Protokolle, PDFs oder Bilder.</p></div><input id="fileInput" type="file" multiple accept="image/*,.pdf,application/pdf"><select id="docCategory"><option>Quittungen</option><option>Protokolle</option><option>Dokumente</option><option>Bilder</option></select><button class="btn primary" id="uploadBtn">In Drive hochladen</button></div></div>
+        <div class="card table-card"><div class="table-wrap"><table class="table"><thead><tr><th>Name</th><th>Kategorie</th><th>Größe</th><th>Datum</th><th></th></tr></thead><tbody id="docTable"></tbody></table></div></div>
+      </section>
+
+      <section class="view" id="view-knowledge">
+        <div class="toolbar"><input class="search" id="knowledgeSearch" placeholder="Vereinswissen durchsuchen …"><button class="btn primary" data-action="new-knowledge">+ Eintrag</button></div>
+        <div class="cards-grid" id="knowledgeGrid"></div>
+      </section>
+
+      <section class="view" id="view-storage">
+        <div class="storage-grid">
+          <div class="card"><div class="card-head"><h2>Speicherübersicht</h2></div><div class="card-body" id="storageDetail"></div></div>
+          <div class="card"><div class="card-head"><h2>Google Drive</h2></div><div class="card-body"><div class="notice" id="driveInfo">Noch nicht verbunden.</div><div class="button-row"><button class="btn primary" id="connectDriveBtn">Google Drive verbinden</button><button class="btn secondary" id="syncNowBtn">Jetzt synchronisieren</button></div><div class="meta-box"><b>OAuth Client-ID</b><div id="clientIdDisplay"></div></div></div></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-settings">
+        <div class="settings-grid">
+          <div class="card setting-card">
+            <h2>Vereinsdaten</h2>
+            <label>Vereinsname<input id="clubName"></label>
+            <label>Eigene Rolle<input id="userRole" placeholder="z. B. Vorsitzender"></label>
+          </div>
+
+          <div class="card setting-card">
+            <h2>Bereiche ein-/ausblenden</h2>
+            <p class="setting-help">Die Daten bleiben erhalten. Es wird nur die Navigation ausgeblendet.</p>
+            <div class="switch-row"><div><b>Verein</b><small>Mitglieder, Gruppen, Sitzungen</small></div><label class="switch"><input id="moduleClub" type="checkbox"><span></span></label></div>
+            <div class="switch-row"><div><b>Dokumente</b><small>Dokumente, Bilder, Vereinswissen</small></div><label class="switch"><input id="moduleDocuments" type="checkbox"><span></span></label></div>
+          </div>
+
+          <div class="card setting-card">
+            <h2>Warnungen & Erinnerungen</h2>
+            <p class="setting-help">Einfaches 3-Stufen-System für Aufgaben, Projekte und Termine.</p>
+            <div class="switch-row"><div><b>Warnsystem aktiv</b><small>Fälligkeiten farblich hervorheben</small></div><label class="switch"><input id="reminderEnabled" type="checkbox"><span></span></label></div>
+            <label>Hinweis ab <b id="infoDaysLabel">14</b> Tagen vorher<input id="infoDays" type="range" min="1" max="60"></label>
+            <label>Warnung ab <b id="warningDaysLabel">7</b> Tagen vorher<input id="warningDays" type="range" min="1" max="30"></label>
+            <label>Alarm ab <b id="alarmDaysLabel">2</b> Tagen vorher<input id="alarmDays" type="range" min="0" max="14"></label>
+            <div class="switch-row"><div><b>Geburtstage in dieser Woche</b><small>Hinweis auf der Übersicht</small></div><label class="switch"><input id="birthdayWeekReminder" type="checkbox"><span></span></label></div>
+            <div class="switch-row"><div><b>Jubiläen erinnern</b><small>Eintrittsjubiläen auf der Übersicht</small></div><label class="switch"><input id="jubileeReminder" type="checkbox"><span></span></label></div>
+          </div>
+
+          <div class="card setting-card">
+            <h2>Speicher</h2>
+            <label>Eigenes Speicherlimit in GB<input id="storageLimit" type="number" min="1" max="100" step="1"></label>
+            <div class="switch-row"><div><b>Bilder komprimieren</b><small>Vor Upload automatisch verkleinern</small></div><label class="switch"><input id="compressImages" type="checkbox"><span></span></label></div>
+          </div>
+        </div>
+        <div class="settings-save"><button class="btn primary" id="saveSettingsBtn">Einstellungen speichern</button></div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<div class="mobile-nav" aria-label="Mobile Hauptnavigation">
+  <button data-view="dashboard" aria-label="Übersicht">🏠<span>Start</span></button>
+  <button data-view="tasks" aria-label="Aufgaben">✅<span>Aufgaben</span></button>
+  <button data-view="projects" aria-label="Projekte">📁<span>Projekte</span></button>
+  <button data-view="calendar" aria-label="Kalender">📅<span>Kalender</span></button>
+  <button id="mobileMoreBtn" type="button" aria-label="Weitere Bereiche">☰<span>Mehr</span></button>
+</div>
+
+<div id="mobileMenuOverlay" class="mobile-menu-overlay" aria-hidden="true"></div>
+<aside id="mobileMenu" class="mobile-menu" aria-label="Weitere Bereiche" aria-hidden="true">
+  <div class="mobile-menu-head">
+    <div class="mobile-menu-brand"><img src="assets/v-planer-logo.png" alt=""><div><b>V-Planer</b><small>Dein Verein. Einfach organisiert.</small></div></div>
+    <button id="mobileMenuClose" class="icon-btn" type="button" aria-label="Menü schließen">×</button>
+  </div>
+  <div class="mobile-menu-scroll">
+    <div class="mobile-menu-section">Planung</div>
+    <button data-view="kanban">▦ Kanban</button>
+    <button data-view="year">🗓 Vereinsjahr</button>
+    <div class="mobile-menu-section" data-module="club">Verein</div>
+    <button data-view="members" data-module="club">👥 Mitglieder</button>
+    <button data-view="groups" data-module="club">🌳 Gruppen</button>
+    <button data-view="meetings" data-module="club">📝 Sitzungen & Beschlüsse</button>
+    <div class="mobile-menu-section" data-module="documents">Dokumente</div>
+    <button data-view="documents" data-module="documents">📄 Dokumente & Bilder</button>
+    <button data-view="knowledge" data-module="documents">📚 Vereinswissen</button>
+    <div class="mobile-menu-section">System</div>
+    <button data-view="storage">☁️ Speicher & Sync</button>
+    <button data-view="settings">⚙️ Einstellungen</button>
+  </div>
+</aside>
+
+<dialog id="modal"><form method="dialog" class="modal"><div class="modal-head"><h2 id="modalTitle">Neu</h2><button value="cancel" class="icon-btn">×</button></div><div class="modal-body" id="modalBody"></div><div class="modal-actions"><button value="cancel" class="btn secondary">Abbrechen</button><button id="modalSave" value="default" class="btn primary">Speichern</button></div></form></dialog>
+<dialog id="detailModal"><form method="dialog" class="modal wide"><div class="modal-head"><h2 id="detailTitle">Details</h2><button value="cancel" class="icon-btn">×</button></div><div class="modal-body" id="detailBody"></div><div class="modal-actions"><button value="cancel" class="btn secondary">Schließen</button></div></form></dialog>
+
+<script src="app.js"></script>
+</body>
+</html>
