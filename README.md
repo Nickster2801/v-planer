@@ -282,3 +282,68 @@ Sortierbare Mitgliederspalten:
 Die aktuell verwendete Spalte zeigt wie bei den Aufgaben direkt einen **↑- oder ↓-Pfeil**.
 
 Auf Smartphone und Tablet bleibt die kompakte Sortierauswahl mit Auf-/Absteigend-Schalter erhalten.
+
+## Korrektur: Terminbearbeitung
+
+Die Terminbearbeitung wurde gegen einen Synchronisations-Randfall abgesichert.
+
+Zuvor konnte eine im Detailfenster gehaltene Termin-Referenz veralten, wenn Google Drive währenddessen den internen Datenbestand neu zusammengeführt hat. In diesem Fall konnte der Bearbeitungsdialog zwar gespeichert werden, aber der aktuelle Termin-Datensatz erhielt die Änderungen nicht zuverlässig.
+
+Jetzt gilt:
+
+- beim Öffnen von **Bearbeiten** wird der Termin erneut über seine eindeutige ID aus dem aktuellen Datenbestand geladen
+- direkt beim Speichern wird der Termin nochmals über seine ID aufgelöst
+- Datum, Uhrzeiten, Titel, Ort, Gruppe und Farbe werden auf dem aktuellen Datensatz gespeichert
+- danach werden Kalender, Vereinsjahr, Übersicht und Terminlisten aus genau diesem Datenstand neu gerendert
+- bei exakt identischen Sync-Zeitstempeln behält der lokale Datensatz Vorrang, damit eine gerade vorgenommene Änderung nicht durch eine gleich alte Cloud-Kopie zurückgesetzt wird
+- nach dem Speichern findet zusätzlich eine kleine Konsistenzprüfung statt
+
+
+## Finanzen
+
+V-Planer besitzt jetzt einen neuen Hauptbereich **Finanzen**. Er kann unter **Einstellungen → Module** ein- oder ausgeschaltet werden, ohne Daten zu löschen.
+
+### KassenKumpel
+Der bereitgestellte **KassenKumpel 1.1.1** wurde als Finanzmodul integriert und für die V-Planer-Oberfläche angepasst.
+
+- Kassenbuch / Buchungen
+- Vereinskonto und Barkasse
+- Belege
+- Kassenabschlüsse
+- Auswertungen und Jahresvergleich
+- Einstellungen und bestehende KassenKumpel-Funktionen bleiben erhalten
+- im eingebetteten Betrieb verwendet KassenKumpel die blaue/grüne V-Planer-Designsprache
+- die strukturierten Kassendaten werden an den V-Planer-Datenbestand gespiegelt und dadurch in dessen Google-Drive-Datensynchronisierung einbezogen
+- die eigentlichen Belegdateien bleiben weiterhin im lokalen Belegspeicher des KassenKumpels; seine eigenen Beleg-/Backupfunktionen bleiben dafür bestehen
+
+### Strafen
+Strafen sind direkt mit V-Planer-Mitgliedern verknüpft.
+
+Gespeichert werden Mitglied, Datum, Fälligkeit, Grund, Betrag, Status, Bezahldatum und Notizen. Status: **Offen**, **Bezahlt** oder **Erlassen**. Die Tabelle ist sortier- und filterbar.
+
+## Aufgaben und Projekte im Kalender
+
+Der Kalender zeigt zusätzlich zu Terminen und Geburtstagen jetzt:
+
+- **Aufgaben** an ihrem Fälligkeitsdatum, violett mit ✓
+- **Projekte** an ihrem Zieldatum, türkis mit ◆
+- archivierte Aufgaben und Projekte werden nicht angezeigt
+- erledigte, aber noch nicht archivierte Aufgaben bleiben sichtbar und werden optisch abgeschwächt
+- abgeschlossene, aber noch nicht archivierte Projekte bleiben sichtbar und werden optisch abgeschwächt
+- ein Klick auf eine Aufgabe öffnet direkt die Aufgabenbearbeitung
+- ein Klick auf ein Projekt öffnet direkt die Projektbearbeitung
+- in der rechten Kalenderliste werden kommende Termine, Aufgaben und Projektziele gemeinsam chronologisch angezeigt
+
+## Überarbeitete Kalenderoptik
+
+Die Monatsansicht wurde kompakter und klassischer aufgebaut:
+
+- vorheriger und nächster Monat werden in den Randfeldern dezent mit Tagesnummern eingeblendet
+- dadurch entstehen keine großen scheinbar leeren Flächen am Monatsanfang
+- alle sechs Kalenderwochen haben eine einheitliche kompakte Höhe
+- Wochenenden sind leicht abgesetzt
+- der aktuelle Tag wird klar hervorgehoben
+- **Heute** springt jederzeit in den aktuellen Monat zurück
+- Aufgaben, Projekte, Termine und Geburtstage haben eine kleine Legende
+- pro Tag werden maximal drei Arbeits-/Termineinträge direkt angezeigt; weitere werden als „+ n weitere“ zusammengefasst
+- die rechte Spalte heißt jetzt **Nächste Einträge** und enthält weiterhin Termine, Aufgaben, Projekte und Geburtstage

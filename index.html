@@ -41,6 +41,12 @@
         <button class="nav-btn" data-view="meetings">📝 <span>Sitzungen & Beschlüsse</span></button>
       </div>
 
+      <div class="nav-module" data-module="finance">
+        <div class="nav-section">Finanzen</div>
+        <button class="nav-btn" data-view="finance-kasse">💶 <span>KassenKumpel</span></button>
+        <button class="nav-btn" data-view="finance-fines">⚠️ <span>Strafen</span></button>
+      </div>
+
       <div class="nav-module" data-module="documents">
         <div class="nav-section">Dokumente</div>
         <button class="nav-btn" data-view="documents">📄 <span>Dokumente & Bilder</span></button>
@@ -156,8 +162,24 @@
       <section class="view" id="view-calendar">
         <div class="toolbar"><button class="btn primary" data-action="new-event">+ Termin</button></div>
         <div class="calendar-layout">
-          <div class="card calendar-card"><div class="calendar-head"><button id="prevMonth">‹</button><h2 id="calendarTitle"></h2><button id="nextMonth">›</button></div><div class="calendar-grid" id="calendarGrid"></div></div>
-          <div class="card"><div class="card-head"><h2>Termine & Geburtstage</h2></div><div class="card-body" id="calendarSideList"></div></div>
+          <div class="card calendar-card">
+            <div class="calendar-head">
+              <button id="prevMonth" class="calendar-nav-btn" type="button" aria-label="Vorheriger Monat">‹</button>
+              <div class="calendar-title-group">
+                <h2 id="calendarTitle"></h2>
+                <button id="todayMonth" class="calendar-today-btn" type="button">Heute</button>
+              </div>
+              <button id="nextMonth" class="calendar-nav-btn" type="button" aria-label="Nächster Monat">›</button>
+            </div>
+            <div class="calendar-legend" aria-label="Kalenderlegende">
+              <span><i class="legend-dot event-dot"></i>Termin</span>
+              <span><i class="legend-dot task-dot"></i>Aufgabe</span>
+              <span><i class="legend-dot project-dot"></i>Projekt</span>
+              <span><i class="legend-dot birthday-dot"></i>Geburtstag</span>
+            </div>
+            <div class="calendar-grid" id="calendarGrid"></div>
+          </div>
+          <div class="card calendar-side-card"><div class="card-head"><h2>Nächste Einträge</h2></div><div class="card-body" id="calendarSideList"></div></div>
         </div>
       </section>
 
@@ -178,6 +200,54 @@
             <div class="card-body archive-list" id="archiveProjects"></div>
           </div>
         </div>
+      </section>
+
+      <section class="view finance-view" id="view-finance-kasse" data-module="finance">
+        <div class="finance-kassen-head card">
+          <div class="finance-kassen-brand">
+            <img src="finance/kassenkumpel/assets/kassenkumpel-logo-192.png" alt="KassenKumpel">
+            <div>
+              <h2>KassenKumpel</h2>
+              <p>Kassenbuch, Barkasse, Belege, Kassenabschlüsse und Auswertungen im V-Planer-Finanzbereich.</p>
+              <small id="kassenSyncState">KassenKumpel wird geladen …</small>
+            </div>
+          </div>
+          <div class="finance-kassen-version">integriert · 1.1.1</div>
+        </div>
+        <div class="finance-frame-card card">
+          <iframe id="kassenKumpelFrame" class="finance-frame" src="finance/kassenkumpel/index.html?embed=1" title="KassenKumpel" loading="lazy"></iframe>
+        </div>
+      </section>
+
+      <section class="view finance-view" id="view-finance-fines" data-module="finance">
+        <div class="finance-metrics">
+          <div class="card finance-metric"><span>Offener Betrag</span><b id="fineOpenAmount">0,00 €</b><small>Noch nicht bezahlt</small></div>
+          <div class="card finance-metric"><span>Bezahlt dieses Jahr</span><b id="finePaidYear">0,00 €</b><small>Eingegangene Strafen</small></div>
+          <div class="card finance-metric"><span>Offene Strafen</span><b id="fineOpenCount">0</b><small>Zu bearbeiten</small></div>
+          <div class="card finance-metric"><span>Strafen gesamt</span><b id="fineTotalCount">0</b><small>ohne gelöschte Einträge</small></div>
+        </div>
+        <div class="toolbar">
+          <input class="search" id="fineSearch" placeholder="Strafen durchsuchen …">
+          <select id="fineStatusFilter"><option value="">Alle Status</option><option value="open">Offen</option><option value="paid">Bezahlt</option><option value="waived">Erlassen</option></select>
+          <div class="fine-sort-mobile">
+            <select id="fineSortSelect" aria-label="Strafen sortieren">
+              <option value="date">Datum</option><option value="member">Mitglied</option><option value="reason">Grund</option><option value="amount">Betrag</option><option value="due">Fälligkeit</option><option value="status">Status</option>
+            </select>
+            <button class="btn secondary" id="fineSortDir" type="button">↓ Absteigend</button>
+          </div>
+          <button class="btn primary" id="newFineBtn" type="button">+ Strafe</button>
+        </div>
+        <div class="card table-card"><div class="table-wrap"><table class="table fine-table">
+          <thead><tr>
+            <th aria-sort="descending"><button class="table-sort active" type="button" data-fine-sort="date">Datum <span class="sort-arrow">↓</span></button></th>
+            <th aria-sort="none"><button class="table-sort" type="button" data-fine-sort="member">Mitglied</button></th>
+            <th aria-sort="none"><button class="table-sort" type="button" data-fine-sort="reason">Grund</button></th>
+            <th aria-sort="none"><button class="table-sort" type="button" data-fine-sort="amount">Betrag</button></th>
+            <th aria-sort="none"><button class="table-sort" type="button" data-fine-sort="due">Fällig</button></th>
+            <th aria-sort="none"><button class="table-sort" type="button" data-fine-sort="status">Status</button></th>
+            <th>Aktionen</th>
+          </tr></thead><tbody id="fineTable"></tbody>
+        </table></div></div>
       </section>
 
       <section class="view" id="view-members">
@@ -341,6 +411,7 @@
             <h2>Bereiche ein-/ausblenden</h2>
             <p class="setting-help">Die Daten bleiben erhalten. Es wird nur die Navigation ausgeblendet.</p>
             <div class="switch-row"><div><b>Verein</b><small>Mitglieder, Gruppen, Sitzungen</small></div><label class="switch"><input id="moduleClub" type="checkbox"><span></span></label></div>
+            <div class="switch-row"><div><b>Finanzen</b><small>KassenKumpel und Strafen</small></div><label class="switch"><input id="moduleFinance" type="checkbox"><span></span></label></div>
             <div class="switch-row"><div><b>Dokumente</b><small>Dokumente, Bilder, Vereinswissen</small></div><label class="switch"><input id="moduleDocuments" type="checkbox"><span></span></label></div>
           </div>
 
@@ -425,6 +496,9 @@
     <button data-view="members" data-module="club">👥 Mitglieder</button>
     <button data-view="groups" data-module="club">🌳 Gruppen</button>
     <button data-view="meetings" data-module="club">📝 Sitzungen & Beschlüsse</button>
+    <div class="mobile-menu-section" data-module="finance">Finanzen</div>
+    <button data-view="finance-kasse" data-module="finance">💶 KassenKumpel</button>
+    <button data-view="finance-fines" data-module="finance">⚠️ Strafen</button>
     <div class="mobile-menu-section" data-module="documents">Dokumente</div>
     <button data-view="documents" data-module="documents">📄 Dokumente & Bilder</button>
     <button data-view="knowledge" data-module="documents">📚 Vereinswissen</button>

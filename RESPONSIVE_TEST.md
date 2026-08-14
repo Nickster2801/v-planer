@@ -51,3 +51,17 @@ Wichtige mobile Anpassungen:
 - Priorität: Hoch/Mittel/Niedrig in beide Richtungen testen.
 - Smartphone/Tablet: Sortierauswahl und Richtungsbutton prüfen.
 - Sortierung zusammen mit Suche, Statusfilter und Archivierung testen.
+
+
+## Finanzen
+- Finanzmodul in Einstellungen aus- und wieder einschalten.
+- KassenKumpel öffnen, Buchung ändern und prüfen, dass der V-Planer-Brückenstatus reagiert.
+- Strafe anlegen, bezahlen, erlassen, wieder öffnen, bearbeiten und löschen.
+- Smartphone/Tablet: KassenKumpel-Iframe, Strafenmetriken und Sortierung testen.
+
+## Aufgaben/Projekte im Kalender
+- Aufgabe mit Fälligkeit anlegen und Kalenderchip prüfen.
+- Projekt mit Zieldatum anlegen und Kalenderchip prüfen.
+- Aufgabe/Projekt im Kalender anklicken und Bearbeitungsdialog prüfen.
+- Aufgabe/Projekt archivieren und prüfen, dass der Kalendereintrag verschwindet.
+- Mehrtägige Termine parallel zu Aufgaben/Projekten testen.

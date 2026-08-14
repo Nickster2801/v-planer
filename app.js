@@ -6,7 +6,7 @@ const STORAGE_KEY = "v-planer-cloud-v1.0";
 const DRIVE_GRANT_KEY = "v-planer-drive-grant-known-v1";
 const APPDATA_FILE = "v-planer-data-v1.0.json";
 const SCOPES = "https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/drive.file";
-const COLLECTIONS = ["tasks","projects","events","members","groups","functions","meetings","knowledge","documents","folders"];
+const COLLECTIONS = ["tasks","projects","events","members","groups","functions","meetings","knowledge","documents","folders","fines"];
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -25,12 +25,12 @@ function defaultDB(){
     version:4, updatedAt:now(), settingsUpdatedAt:now(),
     settings:{
       clubName:"Mein Verein", userRole:"Vorstand", uiScale:100, storageLimitGB:CFG.DEFAULT_STORAGE_LIMIT_GB||5, compressImages:true,
-      modules:{club:true,documents:true},
+      modules:{club:true,documents:true,finance:true},
       groupTypes:["Abteilung","Mannschaft","Trainingsgruppe","Vorstand","Ausschuss","Arbeitsgruppe","Projektgruppe"],
       reminders:{enabled:true,infoDays:14,warningDays:7,alarmDays:2,birthdayWeek:true,jubilee:true}
     },
     counters:{memberNo:1},
-    tasks:[],projects:[],events:[],members:[],groups:[],functions:[],meetings:[],knowledge:[],documents:[],folders:[]
+    tasks:[],projects:[],events:[],members:[],groups:[],functions:[],meetings:[],knowledge:[],documents:[],folders:[],fines:[],financeKassenKumpelState:null,financeKassenKumpelUpdatedAt:""
   };
 }
 function normalizeDB(data){
@@ -82,6 +82,7 @@ if (window.VP_DEMO && COLLECTIONS.every(c => db[c].filter(x => !x.deletedAt).len
 let selectedMemberId = null, selectedGroupId = null, calDate = new Date();
 let memberSort = {key:"name",dir:"asc"};
 let taskSort = {key:"due",dir:"asc"};
+let fineSort = {key:"date",dir:"desc"};
 let selectedFolderByArea = {meetings:"",documents:"",knowledge:""};
 const AREA_META = {
   meetings:{label:"Sitzungen & Beschlüsse",driveName:"Sitzungen und Beschlüsse"},
@@ -109,6 +110,44 @@ function saveLocal(opts={}){
   db.updatedAt=now(); localStorage.setItem(STORAGE_KEY,JSON.stringify(db)); renderAll();
   if(opts.autoSync!==false && accessToken) scheduleAutoSync();
 }
+
+function persistFinanceBridgeState(){
+  db.updatedAt=now();
+  localStorage.setItem(STORAGE_KEY,JSON.stringify(db));
+  if(accessToken)scheduleAutoSync();
+}
+function sendKassenKumpelStateToFrame(){
+  const frame=$("#kassenKumpelFrame");
+  if(!frame?.contentWindow||!db.financeKassenKumpelState)return;
+  frame.contentWindow.postMessage({
+    type:"vp-load-kassen-state",
+    state:db.financeKassenKumpelState,
+    updatedAt:db.financeKassenKumpelUpdatedAt||""
+  },location.origin);
+}
+window.addEventListener("message",event=>{
+  if(event.origin!==location.origin)return;
+  const data=event.data||{};
+  if(data.type==="vp-kassen-ready"){
+    if(!db.financeKassenKumpelState&&data.state){
+      db.financeKassenKumpelState=data.state;
+      db.financeKassenKumpelUpdatedAt=data.updatedAt||now();
+      persistFinanceBridgeState();
+    }else{
+      sendKassenKumpelStateToFrame();
+    }
+    const state=$("#kassenSyncState");
+    if(state)state.textContent="Kassendaten mit V-Planer gekoppelt";
+    return;
+  }
+  if(data.type==="vp-kassen-state"&&data.state&&typeof data.state==="object"){
+    db.financeKassenKumpelState=data.state;
+    db.financeKassenKumpelUpdatedAt=data.updatedAt||now();
+    persistFinanceBridgeState();
+    const state=$("#kassenSyncState");
+    if(state)state.textContent="Kassendaten in V-Planer übernommen";
+  }
+});
 function applyUiScale(value=db.settings?.uiScale||100){
   const scale=Math.min(125,Math.max(80,Number(value)||100));
   document.documentElement.style.setProperty("--ui-scale",String(scale/100));
@@ -358,10 +397,11 @@ function membersOfGroup(groupId,includeChildren=true){ const ids=[groupId,...(in
 function activeFunctionsForGroup(groupId){ const today=todayStr(); return activeRows("functions").filter(f=>f.groupId===groupId&&(!f.endDate||f.endDate>=today)); }
 function formerFunctionsForGroup(groupId){ const today=todayStr(); return activeRows("functions").filter(f=>f.groupId===groupId&&f.endDate&&f.endDate<today); }
 
-function pageMeta(view){return({dashboard:["Übersicht","Heute, diese Woche und alles Wichtige im Blick."],tasks:["Aufgaben","Offene Punkte, Zuständigkeiten und Fälligkeiten."],projects:["Projekte","Vorhaben wie in einer Projektzentrale planen und verfolgen."],kanban:["Kanban","Offen, In Arbeit, Warten und Erledigt."],calendar:["Kalender","Termine, Geburtstage und Vereinsereignisse."],year:["Vereinsjahr","Das Vereinsjahr auf einen Blick."],archive:["Archiv","Abgeschlossene Aufgaben und Projekte übersichtlich aufbewahren."],members:["Mitglieder","Stammdaten, Historie, Beziehungen, Ehrungen und Erinnerungen."],groups:["Gruppen","Gruppen, Untergruppen, Funktionen, Mannschaften und Statistiken."],meetings:["Sitzungen & Beschlüsse","Tagesordnungen, Protokolle und Entscheidungen."],documents:["Dokumente & Bilder","Quittungen, Protokolle, PDFs und Fotos."],knowledge:["Vereinswissen","Abläufe, Ansprechpartner und Erfahrungswissen."],storage:["Speicher & Sync","Google Drive, Datenvolumen und Synchronisation."],settings:["Einstellungen","Module, Warnungen und Grundkonfiguration."]})[view]||[view,""]}
+function pageMeta(view){return({dashboard:["Übersicht","Heute, diese Woche und alles Wichtige im Blick."],tasks:["Aufgaben","Offene Punkte, Zuständigkeiten und Fälligkeiten."],projects:["Projekte","Vorhaben wie in einer Projektzentrale planen und verfolgen."],kanban:["Kanban","Offen, In Arbeit, Warten und Erledigt."],calendar:["Kalender","Termine, Geburtstage und Vereinsereignisse."],year:["Vereinsjahr","Das Vereinsjahr auf einen Blick."],archive:["Archiv","Abgeschlossene Aufgaben und Projekte übersichtlich aufbewahren."],"finance-kasse":["KassenKumpel","Kassenbuch, Barkasse, Belege und Auswertungen."],"finance-fines":["Strafen","Strafen und Zahlungen der Vereinsmitglieder verwalten."],members:["Mitglieder","Stammdaten, Historie, Beziehungen, Ehrungen und Erinnerungen."],groups:["Gruppen","Gruppen, Untergruppen, Funktionen, Mannschaften und Statistiken."],meetings:["Sitzungen & Beschlüsse","Tagesordnungen, Protokolle und Entscheidungen."],documents:["Dokumente & Bilder","Quittungen, Protokolle, PDFs und Fotos."],knowledge:["Vereinswissen","Abläufe, Ansprechpartner und Erfahrungswissen."],storage:["Speicher & Sync","Google Drive, Datenvolumen und Synchronisation."],settings:["Einstellungen","Module, Warnungen und Grundkonfiguration."]})[view]||[view,""]}
 function applyModuleVisibility(){
   $$('[data-module="club"]').forEach(el=>el.classList.toggle("hidden",!db.settings.modules.club));
   $$('[data-module="documents"]').forEach(el=>el.classList.toggle("hidden",!db.settings.modules.documents));
+  $$('[data-module="finance"]').forEach(el=>el.classList.toggle("hidden",db.settings.modules.finance===false));
 }
 function closeMobileMenu(){
   const menu=$("#mobileMenu"), overlay=$("#mobileMenuOverlay");
@@ -378,6 +418,7 @@ function openMobileMenu(){
 function go(view){
   if((view==="members"||view==="groups"||view==="meetings")&&!db.settings.modules.club)view="dashboard";
   if((view==="documents"||view==="knowledge")&&!db.settings.modules.documents)view="dashboard";
+  if(view.startsWith("finance-")&&db.settings.modules.finance===false)view="dashboard";
   $$(".view").forEach(v=>v.classList.toggle("active",v.id===`view-${view}`));
   $$(".nav-btn").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
   const [t,s]=pageMeta(view); $("#pageTitle").textContent=t; $("#pageSubtitle").textContent=s;
@@ -424,6 +465,29 @@ function renderDashboard(){
   renderDashboardStorage();
 }
 function projectDayClass(date){const c=reminderClass(date);return c.includes("alarm")?"alarm":c.includes("warning")?"warning":c.includes("info")?"info":"ok"}
+function calendarTaskRowHTML(t){
+  return `<button type="button" class="event-row event-row-button calendar-linked-row calendar-task-row" data-calendar-task="${t.id}">
+    <div class="calendar-type-box task-type-box">✓</div>
+    <div><div class="mini-title">${esc(t.title)}</div><div class="mini-meta">Aufgabe · fällig ${fmtDate(t.due)} · ${esc(projectName(t.projectId))}</div></div>
+  </button>`;
+}
+function calendarProjectRowHTML(p){
+  return `<button type="button" class="event-row event-row-button calendar-linked-row calendar-project-row" data-calendar-project="${p.id}">
+    <div class="calendar-type-box project-type-box">◆</div>
+    <div><div class="mini-title">${esc(p.name)}</div><div class="mini-meta">Projektziel · ${fmtDate(p.due)} · ${esc(groupName(p.groupId))}</div></div>
+  </button>`;
+}
+function bindCalendarWorkOpeners(scope=document){
+  scope.querySelectorAll?.("[data-calendar-task]")?.forEach(btn=>btn.onclick=()=>{
+    const t=byId("tasks",btn.dataset.calendarTask);
+    if(t)openTaskModal(t);
+  });
+  scope.querySelectorAll?.("[data-calendar-project]")?.forEach(btn=>btn.onclick=()=>{
+    const p=byId("projects",btn.dataset.calendarProject);
+    if(p)openProjectModal(p);
+  });
+}
+
 function eventStartDate(e){ return e.startDate||e.date||""; }
 function eventEndDate(e){ return e.endDate||eventStartDate(e); }
 function eventStartTime(e){ return e.startTime||e.time||""; }
@@ -785,54 +849,123 @@ function renderKanban(){
 function renderCalendar(){
   const y=calDate.getFullYear(),m=calDate.getMonth();
   $("#calendarTitle").textContent=new Intl.DateTimeFormat("de-DE",{month:"long",year:"numeric"}).format(calDate);
-  const first=new Date(y,m,1),offset=(first.getDay()+6)%7,days=new Date(y,m+1,0).getDate();
-  let cells=["Mo","Di","Mi","Do","Fr","Sa","So"].map(x=>`<div class="weekday">${x}</div>`);
-  for(let i=0;i<offset;i++)cells.push('<div class="cal-day muted"></div>');
 
-  for(let d=1;d<=days;d++){
-    const ds=`${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
-    const ev=activeRows("events").filter(e=>eventOccursOn(e,ds)).slice(0,3);
-    const bd=activeRows("members").filter(mem=>mem.birthDate&&mem.status!=="deceased"&&Number(mem.birthDate.slice(5,7))===m+1&&Number(mem.birthDate.slice(8,10))===d).slice(0,2);
+  const first=new Date(y,m,1),
+        offset=(first.getDay()+6)%7,
+        days=new Date(y,m+1,0).getDate(),
+        prevDays=new Date(y,m,0).getDate(),
+        today=todayStr();
 
-    cells.push(`<div class="cal-day">
-      <b>${d}</b>
-      ${bd.map(mem=>`<div class="cal-chip birthday">🎂 ${esc(mem.firstName||mem.lastName)}</div>`).join("")}
-      ${ev.map(e=>{
-        const start=eventStartDate(e),end=eventEndDate(e);
-        const isStart=ds===start,isEnd=ds===end,multi=eventIsMultiDay(e);
-        const marker=multi?(isStart?"▶ ":isEnd?"■ ":"↔ "):"";
-        const time=isStart&&eventStartTime(e)?` ${eventStartTime(e)}`:"";
-        const color=eventColor(e);
-        return `<button class="cal-chip ${multi?"multi-day":""} cal-event-button" type="button" data-calendar-event="${e.id}" style="--event-color:${color};--event-soft:${colorWithAlpha(color,.14)}" title="${esc(eventDateRangeText(e))}${eventTimeRangeText(e)?` · ${esc(eventTimeRangeText(e))}`:""}">${marker}${esc(e.title)}${time}</button>`;
-      }).join("")}
+  let cells=["Mo","Di","Mi","Do","Fr","Sa","So"].map((x,i)=>`<div class="weekday ${i>=5?"weekend-head":""}">${x}</div>`);
+
+  // Always render six complete weeks. This avoids the large empty-looking
+  // first row when a month begins late in the week.
+  for(let cell=0;cell<42;cell++){
+    const rawDay=cell-offset+1;
+    let cellDate,dayNumber,outside=false;
+
+    if(rawDay<1){
+      dayNumber=prevDays+rawDay;
+      cellDate=new Date(y,m-1,dayNumber);
+      outside=true;
+    }else if(rawDay>days){
+      dayNumber=rawDay-days;
+      cellDate=new Date(y,m+1,dayNumber);
+      outside=true;
+    }else{
+      dayNumber=rawDay;
+      cellDate=new Date(y,m,dayNumber);
+    }
+
+    const cy=cellDate.getFullYear(),
+          cm=cellDate.getMonth()+1,
+          cd=cellDate.getDate(),
+          ds=`${cy}-${String(cm).padStart(2,"0")}-${String(cd).padStart(2,"0")}`,
+          weekdayIndex=cell%7,
+          weekend=weekdayIndex>=5,
+          isToday=ds===today;
+
+    if(outside){
+      cells.push(`<div class="cal-day outside-month ${weekend?"weekend":""}">
+        <div class="cal-day-top"><span class="cal-day-number">${dayNumber}</span></div>
+      </div>`);
+      continue;
+    }
+
+    const birthdays=activeRows("members")
+      .filter(mem=>mem.birthDate&&mem.status!=="deceased"&&Number(mem.birthDate.slice(5,7))===m+1&&Number(mem.birthDate.slice(8,10))===dayNumber)
+      .slice(0,1);
+    const events=activeRows("events").filter(e=>eventOccursOn(e,ds));
+    const tasks=activeRows("tasks").filter(t=>t.due===ds);
+    const projects=activeRows("projects").filter(p=>p.due===ds);
+
+    const workItems=[
+      ...events.map(e=>({kind:"event",record:e})),
+      ...tasks.map(t=>({kind:"task",record:t})),
+      ...projects.map(p=>({kind:"project",record:p}))
+    ];
+    const visible=workItems.slice(0,3),
+          more=Math.max(0,workItems.length-visible.length);
+
+    cells.push(`<div class="cal-day ${weekend?"weekend":""} ${isToday?"today":""}">
+      <div class="cal-day-top">
+        <span class="cal-day-number">${dayNumber}</span>
+        ${isToday?`<span class="today-label">Heute</span>`:""}
+      </div>
+      <div class="cal-day-content">
+        ${birthdays.map(mem=>`<div class="cal-chip birthday" title="Geburtstag: ${esc(memberFullName(mem))}">🎂 ${esc(mem.firstName||mem.lastName)}</div>`).join("")}
+        ${visible.map(item=>{
+          if(item.kind==="event"){
+            const e=item.record,start=eventStartDate(e),end=eventEndDate(e);
+            const isStart=ds===start,isEnd=ds===end,multi=eventIsMultiDay(e);
+            const marker=multi?(isStart?"▶ ":isEnd?"■ ":"↔ "):"";
+            const time=isStart&&eventStartTime(e)?` ${eventStartTime(e)}`:"";
+            const color=eventColor(e);
+            return `<button class="cal-chip ${multi?"multi-day":""} cal-event-button" type="button" data-calendar-event="${e.id}" style="--event-color:${color};--event-soft:${colorWithAlpha(color,.14)}" title="${esc(eventDateRangeText(e))}${eventTimeRangeText(e)?` · ${esc(eventTimeRangeText(e))}`:""}">${marker}${esc(e.title)}${time}</button>`;
+          }
+          if(item.kind==="task"){
+            const t=item.record;
+            return `<button class="cal-chip cal-work-button cal-task-button ${t.status==="done"?"is-done":""}" type="button" data-calendar-task="${t.id}" title="Aufgabe fällig · ${esc(statusLabel(t.status))}">✓ ${esc(t.title)}</button>`;
+          }
+          const p=item.record;
+          return `<button class="cal-chip cal-work-button cal-project-button ${p.status==="closed"?"is-closed":""}" type="button" data-calendar-project="${p.id}" title="Projekt-Zieldatum · ${esc(statusLabel(p.status))}">◆ ${esc(p.name)}</button>`;
+        }).join("")}
+        ${more?`<div class="cal-more">+ ${more} weitere</div>`:""}
+      </div>
     </div>`);
   }
+
   $("#calendarGrid").innerHTML=cells.join("");
   $$("[data-calendar-event]").forEach(btn=>btn.onclick=()=>{
     const e=byId("events",btn.dataset.calendarEvent);
     if(e)showEventDetails(e);
   });
+  bindCalendarWorkOpeners($("#calendarGrid"));
 
   const combined=[
-    ...activeRows("events")
-      .filter(e=>eventEndDate(e)>=todayStr())
-      .map(e=>({...e,_kind:"event"})),
-    ...upcomingBirthdays(31).map(m=>({...m,_kind:"birthday"}))
+    ...activeRows("events").filter(e=>eventEndDate(e)>=todayStr()).map(e=>({...e,_kind:"event",_sortDate:eventStartDate(e)})),
+    ...activeRows("tasks").filter(t=>t.due&&t.due>=todayStr()).map(t=>({...t,_kind:"task",_sortDate:t.due})),
+    ...activeRows("projects").filter(p=>p.due&&p.due>=todayStr()).map(p=>({...p,_kind:"project",_sortDate:p.due})),
+    ...upcomingBirthdays(31).map(mem=>({...mem,_kind:"birthday",_sortDate:`9999-${String(mem._days).padStart(4,"0")}`}))
   ].sort((a,b)=>{
-    if(a._kind==="event"&&b._kind==="event")return eventStartDate(a).localeCompare(eventStartDate(b));
-    if(a._kind==="event")return -1;
-    if(b._kind==="event")return 1;
-    return a._days-(b._days??9999);
-  }).slice(0,12);
+    if(a._kind==="birthday"&&b._kind==="birthday")return a._days-b._days;
+    if(a._kind==="birthday")return 1;
+    if(b._kind==="birthday")return -1;
+    return String(a._sortDate||"").localeCompare(String(b._sortDate||""));
+  }).slice(0,16);
 
-  $("#calendarSideList").innerHTML=combined.length?combined.map(x=>
-    x._kind==="event"
-      ?eventRowHTML(x)
-      :`<div class="birthday-row"><div class="person-dot">🎂</div><div><div class="mini-title">${esc(memberFullName(x))}</div><div class="mini-meta">${x._days===0?"Heute":x._days===1?"Morgen":`in ${x._days} Tagen`}</div></div></div>`
-  ).join(""):`<div class="empty">Keine Einträge.</div>`;
+  $("#calendarSideList").innerHTML=combined.length?combined.map(x=>{
+    if(x._kind==="event")return eventRowHTML(x);
+    if(x._kind==="task")return calendarTaskRowHTML(x);
+    if(x._kind==="project")return calendarProjectRowHTML(x);
+    return `<div class="birthday-row"><div class="person-dot">🎂</div><div><div class="mini-title">${esc(memberFullName(x))}</div><div class="mini-meta">${x._days===0?"Heute":x._days===1?"Morgen":`in ${x._days} Tagen`}</div></div></div>`;
+  }).join(""):`<div class="empty">Keine Einträge.</div>`;
   bindEventOpeners($("#calendarSideList"));
+  bindCalendarWorkOpeners($("#calendarSideList"));
 }
-$("#prevMonth").onclick=()=>{calDate=new Date(calDate.getFullYear(),calDate.getMonth()-1,1);renderCalendar()};$("#nextMonth").onclick=()=>{calDate=new Date(calDate.getFullYear(),calDate.getMonth()+1,1);renderCalendar()};
+$("#prevMonth").onclick=()=>{calDate=new Date(calDate.getFullYear(),calDate.getMonth()-1,1);renderCalendar()};
+$("#nextMonth").onclick=()=>{calDate=new Date(calDate.getFullYear(),calDate.getMonth()+1,1);renderCalendar()};
+$("#todayMonth").onclick=()=>{const d=new Date();calDate=new Date(d.getFullYear(),d.getMonth(),1);renderCalendar()};
 
 function eventOverlapsMonth(e,year,monthIndex){
   const start=eventStartDate(e),end=eventEndDate(e);
@@ -988,6 +1121,142 @@ function renderMemberDetail(){
   });
 }
 $("#memberSearch").addEventListener("input",renderMembers);$("#memberStatusFilter").addEventListener("change",renderMembers);
+
+
+const euroFmt=new Intl.NumberFormat("de-DE",{style:"currency",currency:"EUR"});
+function fineMoney(value){return euroFmt.format(Number(value)||0)}
+function fineStatusLabel(status){return ({open:"Offen",paid:"Bezahlt",waived:"Erlassen"})[status]||status||"Offen"}
+function fineStatusBadge(status){
+  const cls=status==="paid"?"ok":status==="waived"?"gray":"alarm";
+  return `<span class="badge ${cls}">${fineStatusLabel(status)}</span>`;
+}
+function fineMemberLabel(f){
+  const m=byId("members",f.memberId);
+  return m?memberFullName(m):(f.memberNameSnapshot||"Mitglied nicht mehr vorhanden");
+}
+function fineSortValue(f,key){
+  if(key==="date")return f.date||"";
+  if(key==="member")return fineMemberLabel(f).toLocaleLowerCase("de-DE");
+  if(key==="reason")return String(f.reason||"").toLocaleLowerCase("de-DE");
+  if(key==="amount")return Number(f.amount)||0;
+  if(key==="due")return f.dueDate||"9999-12-31";
+  if(key==="status")return ({open:1,paid:2,waived:3})[f.status]||99;
+  return "";
+}
+function sortFines(rows){
+  const dir=fineSort.dir==="desc"?-1:1,key=fineSort.key;
+  return rows.slice().sort((a,b)=>{
+    const av=fineSortValue(a,key),bv=fineSortValue(b,key);
+    const c=(typeof av==="number"&&typeof bv==="number")?av-bv:String(av).localeCompare(String(bv),"de",{numeric:true,sensitivity:"base"});
+    return c?c*dir:String(a.reason||"").localeCompare(String(b.reason||""),"de",{sensitivity:"base"});
+  });
+}
+function updateFineSortUI(){
+  $$("[data-fine-sort]").forEach(btn=>{
+    const active=btn.dataset.fineSort===fineSort.key;
+    btn.classList.toggle("active",active);
+    btn.querySelector(".sort-arrow")?.remove();
+    const th=btn.closest("th");
+    if(th)th.setAttribute("aria-sort",active?(fineSort.dir==="asc"?"ascending":"descending"):"none");
+    if(active)btn.insertAdjacentHTML("beforeend",`<span class="sort-arrow" aria-hidden="true">${fineSort.dir==="asc"?" ↑":" ↓"}</span>`);
+  });
+  if($("#fineSortSelect"))$("#fineSortSelect").value=fineSort.key;
+  if($("#fineSortDir"))$("#fineSortDir").textContent=fineSort.dir==="asc"?"↑ Aufsteigend":"↓ Absteigend";
+}
+function fineMemberOptions(selected="",snapshot=""){
+  const members=activeRows("members").slice().sort((a,b)=>memberFullName(a).localeCompare(memberFullName(b),"de"));
+  let result='<option value="">Mitglied auswählen …</option>';
+  if(selected&&!members.some(m=>m.id===selected))result+=`<option value="${esc(selected)}" selected>${esc(snapshot||"Nicht mehr vorhandenes Mitglied")}</option>`;
+  result+=members.map(m=>`<option value="${m.id}" ${m.id===selected?"selected":""}>${esc(memberFullName(m))} · ${esc(memberNo(m))}</option>`).join("");
+  return result;
+}
+function renderFines(){
+  const all=activeRows("fines");
+  const q=($("#fineSearch")?.value||"").toLowerCase(),status=$("#fineStatusFilter")?.value||"";
+  const rows=sortFines(all.filter(f=>(!status||f.status===status)&&(!q||`${fineMemberLabel(f)} ${f.reason||""} ${f.notes||""}`.toLowerCase().includes(q))));
+  const open=all.filter(f=>f.status==="open");
+  const paidYear=all.filter(f=>f.status==="paid"&&(f.paidDate||"").startsWith(String(new Date().getFullYear())));
+  if($("#fineOpenAmount"))$("#fineOpenAmount").textContent=fineMoney(open.reduce((s,f)=>s+Number(f.amount||0),0));
+  if($("#finePaidYear"))$("#finePaidYear").textContent=fineMoney(paidYear.reduce((s,f)=>s+Number(f.amount||0),0));
+  if($("#fineOpenCount"))$("#fineOpenCount").textContent=open.length;
+  if($("#fineTotalCount"))$("#fineTotalCount").textContent=all.length;
+  if(!$("#fineTable"))return;
+
+  $("#fineTable").innerHTML=rows.length?rows.map(f=>`<tr>
+    <td>${fmtDate(f.date)}</td>
+    <td><b>${esc(fineMemberLabel(f))}</b><div class="mini-meta">${esc(f.memberNoSnapshot||"")}</div></td>
+    <td><b>${esc(f.reason||"—")}</b>${f.notes?`<div class="fine-note">${esc(f.notes)}</div>`:""}</td>
+    <td><b>${esc(fineMoney(f.amount))}</b></td>
+    <td>${f.dueDate?fmtDate(f.dueDate):"—"}</td>
+    <td>${fineStatusBadge(f.status)}</td>
+    <td class="fine-actions">
+      <button class="action-link" data-edit-fine="${f.id}">Bearbeiten</button>
+      ${f.status!=="paid"?`<button class="action-link" data-pay-fine="${f.id}">Bezahlt</button>`:""}
+      ${f.status!=="waived"?`<button class="action-link" data-waive-fine="${f.id}">Erlassen</button>`:""}
+      ${f.status!=="open"?`<button class="action-link" data-reopen-fine="${f.id}">Wieder öffnen</button>`:""}
+      <button class="action-link danger-text" data-delete-fine="${f.id}">Löschen</button>
+    </td>
+  </tr>`).join(""):`<tr><td colspan="7" class="empty">Keine Strafen gefunden.</td></tr>`;
+
+  updateFineSortUI();
+  $$("[data-edit-fine]").forEach(btn=>btn.onclick=()=>openFineModal(byId("fines",btn.dataset.editFine)));
+  $$("[data-pay-fine]").forEach(btn=>btn.onclick=()=>{const f=byId("fines",btn.dataset.payFine);if(f){f.status="paid";f.paidDate=todayStr();touch(f);saveLocal();}});
+  $$("[data-waive-fine]").forEach(btn=>btn.onclick=()=>{const f=byId("fines",btn.dataset.waiveFine);if(f&&confirm(`Strafe „${f.reason}“ wirklich erlassen?`)){f.status="waived";f.paidDate="";touch(f);saveLocal();}});
+  $$("[data-reopen-fine]").forEach(btn=>btn.onclick=()=>{const f=byId("fines",btn.dataset.reopenFine);if(f){f.status="open";f.paidDate="";touch(f);saveLocal();}});
+  $$("[data-delete-fine]").forEach(btn=>btn.onclick=()=>{const f=byId("fines",btn.dataset.deleteFine);if(f&&confirm(`Strafe „${f.reason}“ wirklich löschen?`)){markDeleted("fines",f.id);saveLocal();}});
+}
+function openFineModal(rec=null){
+  const r=rec||{memberId:"",memberNameSnapshot:"",memberNoSnapshot:"",date:todayStr(),dueDate:"",reason:"",amount:"",status:"open",paidDate:"",notes:""};
+  showModal(rec?"Strafe bearbeiten":"Neue Strafe",`<div class="form-grid">
+    <label class="full">Mitglied<select id="fineMember">${fineMemberOptions(r.memberId,r.memberNameSnapshot)}</select></label>
+    <label>Datum<input id="fineDate" type="date" value="${esc(r.date||todayStr())}"></label>
+    <label>Fällig am<input id="fineDue" type="date" value="${esc(r.dueDate||"")}"></label>
+    <label class="full">Grund<input id="fineReason" value="${esc(r.reason||"")}" placeholder="z. B. nicht geleisteter Dienst"></label>
+    <label>Betrag (€)<input id="fineAmount" type="number" min="0.01" step="0.01" inputmode="decimal" value="${esc(r.amount||"")}"></label>
+    <label>Status<select id="fineStatus">
+      <option value="open" ${r.status==="open"?"selected":""}>Offen</option>
+      <option value="paid" ${r.status==="paid"?"selected":""}>Bezahlt</option>
+      <option value="waived" ${r.status==="waived"?"selected":""}>Erlassen</option>
+    </select></label>
+    <label>Bezahlt am<input id="finePaidDate" type="date" value="${esc(r.paidDate||"")}"></label>
+    <label class="full">Notizen<textarea id="fineNotes" rows="4">${esc(r.notes||"")}</textarea></label>
+    <div class="form-note full">Strafen sind mit einem V-Planer-Mitglied verknüpft. Name und Mitgliedsnummer werden zusätzlich als Historie gespeichert.</div>
+  </div>`,()=>{
+    const memberId=$("#fineMember").value,reason=$("#fineReason").value.trim(),amount=Number($("#fineAmount").value);
+    if(!memberId){alert("Bitte ein Mitglied auswählen.");return false;}
+    if(!reason){alert("Bitte einen Grund angeben.");return false;}
+    if(!(amount>0)){alert("Bitte einen gültigen Betrag größer 0 eingeben.");return false;}
+    const member=byId("members",memberId),status=$("#fineStatus").value;
+    const target=rec||{id:uid(),createdAt:now()};
+    Object.assign(target,{
+      memberId,
+      memberNameSnapshot:member?memberFullName(member):(r.memberNameSnapshot||""),
+      memberNoSnapshot:member?memberNo(member):(r.memberNoSnapshot||""),
+      date:$("#fineDate").value||todayStr(),
+      dueDate:$("#fineDue").value,
+      reason,
+      amount:Math.round(amount*100)/100,
+      status,
+      paidDate:status==="paid"?($("#finePaidDate").value||todayStr()):"",
+      notes:$("#fineNotes").value.trim()
+    });
+    touch(target);
+    if(!rec)db.fines.push(target);
+    saveLocal();
+    return true;
+  });
+}
+$("#fineSearch")?.addEventListener("input",renderFines);
+$("#fineStatusFilter")?.addEventListener("change",renderFines);
+$$("[data-fine-sort]").forEach(btn=>btn.onclick=()=>{
+  const key=btn.dataset.fineSort;
+  if(fineSort.key===key)fineSort.dir=fineSort.dir==="asc"?"desc":"asc";
+  else{fineSort.key=key;fineSort.dir="asc";}
+  renderFines();
+});
+$("#fineSortSelect")?.addEventListener("change",e=>{fineSort.key=e.target.value;fineSort.dir="asc";renderFines();});
+$("#fineSortDir")?.addEventListener("click",()=>{fineSort.dir=fineSort.dir==="asc"?"desc":"asc";renderFines();});
+$("#newFineBtn")?.addEventListener("click",()=>openFineModal());
 
 function renderGroups(){
   const roots=activeRows("groups").filter(g=>!g.parentId); $("#groupTree").innerHTML=roots.length?roots.map(g=>groupNodeHTML(g,0)).join(""):`<div class="empty">Noch keine Gruppen.</div>`;
@@ -1278,6 +1547,7 @@ function renderSettings(){
   $("#uiScaleLabel").textContent=`${s.uiScale||100}%`;
   $("#moduleClub").checked=s.modules.club;
   $("#moduleDocuments").checked=s.modules.documents;
+  $("#moduleFinance").checked=s.modules.finance!==false;
   $("#reminderEnabled").checked=r.enabled;
   $("#infoDays").value=r.infoDays;
   $("#warningDays").value=r.warningDays;
@@ -1319,6 +1589,7 @@ $("#saveSettingsBtn").onclick=()=>{
   applyUiScale(db.settings.uiScale);
   db.settings.modules.club=$("#moduleClub").checked;
   db.settings.modules.documents=$("#moduleDocuments").checked;
+  db.settings.modules.finance=$("#moduleFinance").checked;
   db.settings.groupTypes=groupTypes;
   db.settings.reminders.enabled=$("#reminderEnabled").checked;
   db.settings.reminders.infoDays=Number($("#infoDays").value);
@@ -1358,7 +1629,7 @@ $("#resetUiScaleBtn").onclick=()=>{
 
 
 
-function renderAll(){ applyModuleVisibility(); renderDashboard();renderTasks();renderProjects();renderKanban();renderCalendar();renderYear();renderArchive();renderMembers();renderGroups();renderMeetings();renderDocuments();renderKnowledge();renderStorage();renderSettings(); }
+function renderAll(){ applyModuleVisibility(); renderDashboard();renderTasks();renderProjects();renderKanban();renderCalendar();renderYear();renderArchive();renderFines();renderMembers();renderGroups();renderMeetings();renderDocuments();renderKnowledge();renderStorage();renderSettings(); }
 
 function groupOptions(selected="",excludeId=""){return `<option value="">Gesamtverein / keine Gruppe</option>${activeRows("groups").filter(g=>g.id!==excludeId).map(g=>`<option value="${g.id}" ${g.id===selected?"selected":""}>${esc(g.name)}</option>`).join("")}`}
 function projectOptions(selected=""){return `<option value="">Kein Projekt</option>${activeRows("projects").map(p=>`<option value="${p.id}" ${p.id===selected?"selected":""}>${esc(p.name)}</option>`).join("")}`}
@@ -1500,8 +1771,10 @@ function showEventDetails(e){
   dlg.showModal();
 
   $("#detailEditEvent").onclick=()=>{
+    const current=recordById("events",e.id);
     dlg.close();
-    openEventModal(e);
+    if(current)openEventModal(current);
+    else alert("Der Termin ist im aktuellen Datenstand nicht mehr vorhanden.");
   };
   $("#detailDeleteEvent").onclick=()=>{
     if(!confirm(`Termin „${e.title}“ wirklich löschen?\n\nDer Termin wird aus Kalender und Vereinsjahr entfernt.`))return;
@@ -1512,7 +1785,8 @@ function showEventDetails(e){
 }
 
 function openEventModal(rec=null){
-  const r=rec||{title:"",startDate:"",endDate:"",startTime:"",endTime:"",location:"",groupId:"",color:"#1677c8"};
+  const eventId=rec?.id||"";
+  const r=(eventId?recordById("events",eventId):null)||rec||{title:"",startDate:"",endDate:"",startTime:"",endTime:"",location:"",groupId:"",color:"#1677c8"};
   const startDate=eventStartDate(r),endDate=eventEndDate(r)||startDate,startTime=eventStartTime(r),endTime=eventEndTime(r);
   const currentColor=eventColor(r);
   const palette=[
@@ -1566,22 +1840,45 @@ function openEventModal(rec=null){
     if(ed<sd){alert("Das Bis-Datum darf nicht vor dem Von-Datum liegen.");return false}
     if(sd===ed&&st&&et&&et<st){alert("Bei einem eintägigen Termin darf die Bis-Uhrzeit nicht vor der Von-Uhrzeit liegen.");return false}
 
-    const target=rec||{id:uid(),createdAt:now()};
+    // Important: resolve the current record by ID at save time.
+    // Drive sync may have replaced `db` while this dialog was open.
+    let target=eventId?recordById("events",eventId):null;
+    const isNew=!eventId;
+
+    if(eventId&&!target){
+      alert("Der Termin konnte nicht gespeichert werden, weil er im aktuellen Datenstand nicht mehr vorhanden ist.");
+      return false;
+    }
+    if(isNew)target={id:uid(),createdAt:now()};
+
     Object.assign(target,{
       title,
       startDate:sd,
       endDate:ed,
       startTime:st,
       endTime:et,
+      // Legacy fields retained for older saved data/views.
       date:sd,
       time:st,
       location:$("#fLocation").value,
       groupId:$("#fGroup").value,
       color
     });
-    touch(target);
-    if(!rec)db.events.push(target);
+
+    // Guarantee a fresh modification timestamp after all field changes.
+    target.updatedAt=now();
+
+    if(isNew)db.events.push(target);
+
+    // Persist first, then all event views are rebuilt from the same current record.
     saveLocal();
+
+    // Defensive verification: the saved current record must contain the edited values.
+    const saved=recordById("events",target.id);
+    if(!saved||saved.title!==title||eventStartDate(saved)!==sd||eventEndDate(saved)!==ed){
+      alert("Der Termin konnte nicht vollständig aktualisiert werden. Bitte erneut versuchen.");
+      return false;
+    }
     return true;
   });
 
@@ -1749,8 +2046,32 @@ function openKnowledgeModal(rec=null){
 $$('[data-action="new-task"]').forEach(b=>b.onclick=()=>openTaskModal());$$('[data-action="new-project"]').forEach(b=>b.onclick=()=>openProjectModal());$$('[data-action="new-event"]').forEach(b=>b.onclick=()=>openEventModal());$$('[data-action="new-member"]').forEach(b=>b.onclick=()=>openMemberModal());$$('[data-action="new-group"]').forEach(b=>b.onclick=()=>openGroupModal());$$('[data-action="new-meeting"]').forEach(b=>b.onclick=()=>openMeetingModal());$$('[data-action="new-knowledge"]').forEach(b=>b.onclick=()=>openKnowledgeModal());
 $("#quickCreateBtn").onclick=()=>openTaskModal();
 
-function mergeCollection(local,cloud){ const map=new Map(); [...(local||[]),...(cloud||[])].forEach(rec=>{const old=map.get(rec.id);if(!old||new Date(rec.updatedAt||0)>=new Date(old.updatedAt||0))map.set(rec.id,rec)});return [...map.values()]; }
-function mergeDB(local,cloud){ const out=normalizeDB(local); COLLECTIONS.forEach(c=>out[c]=mergeCollection(local[c],cloud[c])); if(new Date(cloud.settingsUpdatedAt||0)>new Date(local.settingsUpdatedAt||0)){out.settings=normalizeDB(cloud).settings;out.settingsUpdatedAt=cloud.settingsUpdatedAt} out.counters={memberNo:Math.max(local.counters?.memberNo||1,cloud.counters?.memberNo||1)}; out.updatedAt=now(); return out; }
+function mergeCollection(local,cloud){
+  const map=new Map();
+  // Local records are inserted first. Cloud replaces them only when it is
+  // strictly newer. On identical timestamps the local record wins, avoiding
+  // freshly edited values being reverted by an equal-timestamp cloud copy.
+  [...(local||[]),...(cloud||[])].forEach(rec=>{
+    const old=map.get(rec.id);
+    if(!old||new Date(rec.updatedAt||0)>new Date(old.updatedAt||0))map.set(rec.id,rec);
+  });
+  return [...map.values()];
+}
+function mergeDB(local,cloud){
+  const out=normalizeDB(local);
+  COLLECTIONS.forEach(c=>out[c]=mergeCollection(local[c],cloud[c]));
+  if(new Date(cloud.settingsUpdatedAt||0)>new Date(local.settingsUpdatedAt||0)){
+    out.settings=normalizeDB(cloud).settings;
+    out.settingsUpdatedAt=cloud.settingsUpdatedAt;
+  }
+  if(new Date(cloud.financeKassenKumpelUpdatedAt||0)>new Date(local.financeKassenKumpelUpdatedAt||0)){
+    out.financeKassenKumpelState=cloud.financeKassenKumpelState||null;
+    out.financeKassenKumpelUpdatedAt=cloud.financeKassenKumpelUpdatedAt||"";
+  }
+  out.counters={memberNo:Math.max(local.counters?.memberNo||1,cloud.counters?.memberNo||1)};
+  out.updatedAt=now();
+  return out;
+}
 function initTokenClient(){
   if(!CFG.GOOGLE_CLIENT_ID)throw new Error("Bitte zuerst GOOGLE_CLIENT_ID in config.js eintragen.");
   if(!window.google?.accounts?.oauth2)throw new Error("Google Identity Services noch nicht geladen. Internetverbindung prüfen.");
