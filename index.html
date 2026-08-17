@@ -328,9 +328,11 @@
             <div class="card folder-toolbar">
               <div><small class="muted">Aktueller Ordner</small><div class="folder-breadcrumb" id="meetingFolderPath"></div></div>
               <div class="folder-toolbar-actions">
+                <button class="btn tiny secondary folder-export-btn" type="button" data-export-folder="meetings">Exportieren</button>
                 <button class="btn tiny secondary" type="button" data-rename-folder="meetings">Umbenennen</button>
                 <button class="btn tiny danger" type="button" data-delete-folder="meetings">Ordner löschen</button>
               </div>
+              <div class="folder-export-status" data-export-status="meetings" aria-live="polite"></div>
             </div>
             <div class="card upload-card"><div class="upload-zone">
               <div><h3>Datei ablegen</h3><p>Word, PDF, Excel, Bilder und weitere Dateien im aktuellen Ordner. Ganze Ordner können inklusive Unterordnern übernommen werden.</p></div>
@@ -359,9 +361,11 @@
             <div class="card folder-toolbar">
               <div><small class="muted">Aktueller Ordner</small><div class="folder-breadcrumb" id="documentFolderPath"></div></div>
               <div class="folder-toolbar-actions">
+                <button class="btn tiny secondary folder-export-btn" type="button" data-export-folder="documents">Exportieren</button>
                 <button class="btn tiny secondary" type="button" data-rename-folder="documents">Umbenennen</button>
                 <button class="btn tiny danger" type="button" data-delete-folder="documents">Ordner löschen</button>
               </div>
+              <div class="folder-export-status" data-export-status="documents" aria-live="polite"></div>
             </div>
             <div class="doc-categories" id="docCategories"></div>
             <div class="card upload-card"><div class="upload-zone">
@@ -370,7 +374,7 @@
               <input id="documentFolderInput" class="folder-upload-input" type="file" webkitdirectory directory multiple>
               <button class="btn secondary" id="documentFolderUploadBtn" type="button">Ordner hochladen</button>
               <div class="folder-upload-status" id="documentFolderUploadStatus" aria-live="polite"></div>
-              <select id="docCategory"><option>Quittungen</option><option>Protokolle</option><option>Dokumente</option><option>Bilder</option></select>
+              <select id="docCategory"><option>Protokolle</option><option>Dokumente</option><option>Bilder</option></select>
               <button class="btn primary" id="uploadBtn" type="button">In Drive hochladen</button>
             </div></div>
             <div class="card table-card"><div class="table-wrap"><table class="table area-file-table"><thead><tr><th>Name</th><th>Kategorie</th><th>Größe</th><th>Datum</th><th></th></tr></thead><tbody id="docTable"></tbody></table></div></div>
@@ -393,9 +397,11 @@
             <div class="card folder-toolbar">
               <div><small class="muted">Aktueller Ordner</small><div class="folder-breadcrumb" id="knowledgeFolderPath"></div></div>
               <div class="folder-toolbar-actions">
+                <button class="btn tiny secondary folder-export-btn" type="button" data-export-folder="knowledge">Exportieren</button>
                 <button class="btn tiny secondary" type="button" data-rename-folder="knowledge">Umbenennen</button>
                 <button class="btn tiny danger" type="button" data-delete-folder="knowledge">Ordner löschen</button>
               </div>
+              <div class="folder-export-status" data-export-status="knowledge" aria-live="polite"></div>
             </div>
             <div class="card upload-card"><div class="upload-zone">
               <div><h3>Datei zum Vereinswissen ablegen</h3><p>Zum Beispiel Anleitungen, Word-Dateien, PDFs oder Vorlagen. Ganze Ordner können inklusive Unterordnern hochgeladen werden.</p></div>
@@ -469,6 +475,11 @@
             <label>Warnung ab <b id="warningDaysLabel">7</b> Tagen vorher<input id="warningDays" type="range" min="1" max="30"></label>
             <label>Alarm ab <b id="alarmDaysLabel">2</b> Tagen vorher<input id="alarmDays" type="range" min="0" max="14"></label>
             <div class="switch-row"><div><b>Geburtstage in dieser Woche</b><small>Hinweis auf der Übersicht</small></div><label class="switch"><input id="birthdayWeekReminder" type="checkbox"><span></span></label></div>
+            <div class="switch-row"><div><b>Runde Geburtstage hervorheben</b><small>Besondere Geburtstage auf der Übersicht deutlich markieren</small></div><label class="switch"><input id="roundBirthdayReminder" type="checkbox"><span></span></label></div>
+            <label>Runde Geburtstagsalter
+              <input id="roundBirthdayAgesInput" type="text" inputmode="numeric" placeholder="z. B. 20, 30, 40, 50, 60, 70, 80, 90, 100">
+              <small class="setting-help-inline">Kommagetrennt. Diese Altersstufen werden als runder Geburtstag hervorgehoben.</small>
+            </label>
             <div class="switch-row"><div><b>Jubiläen erinnern</b><small>Wichtige Eintrittsjubiläen auf der Übersicht anzeigen</small></div><label class="switch"><input id="jubileeReminder" type="checkbox"><span></span></label></div>
             <label>Wichtige Jubiläumsjahre
               <input id="jubileeYearsInput" type="text" inputmode="numeric" placeholder="z. B. 10, 20, 25, 30, 40, 50">
@@ -492,11 +503,15 @@
               <label class="switch"><input id="calendarSyncEvents" type="checkbox"><span></span></label>
             </div>
             <div class="switch-row">
+              <div><b>Geburtstage synchronisieren</b><small>Als jährliche ganztägige Einträge aus den Mitgliedsdaten</small></div>
+              <label class="switch"><input id="calendarSyncBirthdays" type="checkbox"><span></span></label>
+            </div>
+            <div class="switch-row">
               <div><b>Aufgaben synchronisieren</b><small>Als ganztägiger Eintrag am Fälligkeitsdatum</small></div>
               <label class="switch"><input id="calendarSyncTasks" type="checkbox"><span></span></label>
             </div>
             <div class="switch-row">
-              <div><b>Projekte synchronisieren</b><small>Als ganztägiger Eintrag am Projekt-Zieldatum</small></div>
+              <div><b>Projekte synchronisieren</b><small>Als ganztägiger Eintrag über den Projektzeitraum</small></div>
               <label class="switch"><input id="calendarSyncProjects" type="checkbox"><span></span></label>
             </div>
 

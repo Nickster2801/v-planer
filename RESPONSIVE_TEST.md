@@ -119,3 +119,43 @@ Wichtige mobile Anpassungen:
 - Projekt löschen: Termin muss erhalten bleiben.
 - Termin löschen: Projekt muss erhalten bleiben.
 - Smartphone: Verknüpfungsbereich und Buttons ohne horizontales Scrollen testen.
+
+## Strafkatalog UX
+- Strafkatalog öffnen und **+ Neue Strafe** wählen: Eingabe muss im selben Dialog erscheinen.
+- Neue Strafart speichern: Eingabe muss verschwinden und neuer Eintrag sofort in der Liste sichtbar/kurz hervorgehoben sein.
+- Neue Strafe danach öffnen: gerade angelegte Strafart muss direkt in der Katalogauswahl vorhanden sein.
+- Bearbeiten → speichern: Eingabe schließt, geänderte Zeile bleibt sichtbar.
+- Abbrechen: keine Änderung speichern, Katalog bleibt geöffnet.
+- Suche nach Name und Betrag testen; Escape im Suchfeld leert den Suchbegriff.
+- Löschen mit bereits verwendeter Strafart testen: historische vergebene Strafen bleiben erhalten.
+- Smartphone: Eingabefelder und Buttons mindestens touchfreundlich, keine horizontale Überbreite.
+
+## Google-Kalender-Sync-Fix
+- Einstellungen → Google Kalender öffnen: Checkbox „Geburtstage synchronisieren“ muss sichtbar sein.
+- Alle fünf Sync-Checkboxen einzeln umschalten und Einstellungen erneut öffnen.
+- „Google Kalender verbinden“ klicken: es darf kein `$(...) is null` / `.checked`-Fehler erscheinen.
+- Geburtstage-Sync deaktivieren: Geburtstage dürfen nicht für den Sync ausgewählt werden.
+- Geburtstage-Sync aktivieren: Geburtstage werden als jährliche ganztägige Einträge berücksichtigt.
+- Bestehende lokale Calendar-Prefs ohne neues UI-Feld laden: kein Absturz.
+
+## Datei- und Ordnerexport
+- In allen drei Bereichen einzelne Datei über „Exportieren“ herunterladen.
+- Unterordner mit mehreren Dateien exportieren: ZIP-Struktur prüfen.
+- Hauptordner „Bereich exportieren“: alle Unterordner müssen enthalten sein.
+- Sitzungen & Beschlüsse: Sitzungs-/Beschlusseintrag muss als TXT im ZIP liegen.
+- Vereinswissen: Wissenseintrag muss als TXT im ZIP liegen.
+- Leeren Ordner exportieren: gültiges ZIP ohne Fehler.
+- Abgelaufene Drive-Anmeldung: manueller Export muss die erneute Drive-Freigabe anstoßen.
+- Smartphone: Exportbutton und Dateiactions müssen ohne horizontales Scrollen bedienbar sein.
+
+## Dokumente & Bilder
+- Kategorieübersicht enthält nur Protokolle, Dokumente, Bilder.
+- Upload-Auswahl enthält keine Quittungen.
+- Vorhandene Altdatei mit Kategorie Quittungen bleibt erhalten und sichtbar.
+
+## Runde Geburtstage
+- Einstellungen: Schalter und Altersliste speichern/neu laden.
+- Mitglied so anlegen, dass es 50 wird: Dashboard zeigt 🎉 / Runder Geburtstag.
+- Altersstufe 50 aus Einstellungen entfernen: Geburtstag wird wieder normal dargestellt.
+- Runder Geburtstag innerhalb 30 Tagen: Hinweisstreifen prüfen.
+- Vereinsjahr: runden Geburtstag optisch prüfen.

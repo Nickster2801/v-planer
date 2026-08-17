@@ -534,3 +534,66 @@ Bestehende freie Termine können beim Bearbeiten eines Projekts verknüpft werde
 Projekt und Termin bleiben getrennte Datensätze. Die Verbindung kann jederzeit gelöst werden, ohne einen der Datensätze zu löschen. Wird ein Projekt gelöscht, bleibt der verknüpfte Termin erhalten. Wird ein Termin gelöscht, bleibt das Projekt erhalten.
 
 Die Google-Kalender-Beschreibung zeigt bei verknüpften Einträgen zusätzlich den Projekt-/Terminbezug.
+
+## Strafkatalog – überarbeiteter Bedienablauf
+
+Der Strafkatalog wurde für einen einfacheren Arbeitsablauf überarbeitet.
+
+- **+ Neue Strafe** öffnet kein zweites Dialogfenster mehr, sondern eine kompakte Eingabe direkt im Strafkatalog.
+- Nach **Strafe hinzufügen** wird die Eingabe sofort geschlossen und der neue Eintrag direkt in der Liste angezeigt und kurz hervorgehoben.
+- Beim Bearbeiten verhält es sich genauso: speichern → Eingabe schließt → aktualisierte Zeile bleibt sichtbar.
+- **Abbrechen** schließt nur die Eingabe; der Strafkatalog bleibt geöffnet.
+- Eine Suche filtert den Katalog direkt nach Bezeichnung oder Betrag.
+- Neue Katalogeinträge stehen beim nächsten Öffnen von **Neue Strafe** sofort in der Katalogauswahl zur Verfügung.
+- Löschen aktualisiert die Liste unmittelbar. Bereits vergebene Strafen bleiben weiterhin historisch unverändert.
+- Auf Smartphone und Tablet sind Eingaben und Aktionsbuttons touchfreundlich ausgelegt.
+
+Damit gibt es beim Anlegen/Bearbeiten keinen unnötigen Wechsel mehr zwischen zwei Dialogfenstern.
+
+## Google-Kalender-Sync: Fehlerbehebung
+
+Ein Fehler beim Starten des Kalender-Syncs wurde behoben:
+
+`can't access property "checked", $(...) is null`
+
+Ursache war, dass der JavaScript-Code die Checkbox `calendarSyncBirthdays` verwendet hat, diese im Einstellungs-HTML aber nicht vorhanden war.
+
+Behoben wurde:
+- sichtbare Einstellung **Geburtstage synchronisieren**
+- fehlertolerantes Lesen der Kalender-Checkboxen
+- fehlertolerantes Befüllen der Kalender-Einstellungen
+- der Sync bricht nicht mehr ab, nur weil ein optionales Einstellungsfeld fehlt
+- Geburtstage können separat für Google Kalender aktiviert/deaktiviert werden
+
+Der OAuth-Scope bleibt:
+`https://www.googleapis.com/auth/calendar.app.created`
+
+Hinweis: Die Korrektur behebt den lokalen JavaScript-Absturz. Ob die Google Calendar API im Google-Cloud-Projekt korrekt aktiviert ist und die OAuth-Freigabe funktioniert, muss weiterhin im echten Browser/Google-Konto getestet werden.
+
+## Export in Sitzungen, Dokumenten und Vereinswissen
+
+In **Sitzungen & Beschlüsse**, **Dokumente & Bilder** und **Vereinswissen** können Dateien und Ordner jetzt exportiert werden.
+
+- Bei jeder Datei gibt es **Exportieren**. Die Datei wird direkt aus Google Drive geladen.
+- Im aktuellen Ordner gibt es **Ordner exportieren**.
+- Im Hauptordner heißt die Aktion **Bereich exportieren** und exportiert den gesamten Bereich.
+- Ordnerexporte werden als ZIP erstellt und behalten die Unterordnerstruktur bei.
+- V-Planer-eigene Sitzungs-/Beschlusseinträge und Vereinswissenseinträge werden im ZIP zusätzlich als lesbare TXT-Dateien abgelegt.
+- Der Export löscht oder verändert keine Daten in V-Planer oder Google Drive.
+- Ist der Drive-Token abgelaufen, wird beim manuellen Export die bestehende Drive-Anmeldung erneut verwendet.
+
+Der ZIP-Export wird lokal im Browser erstellt. Bei Exporten über ca. 250 MB erscheint deshalb vorher ein Hinweis zum Arbeitsspeicher.
+
+### Dokumente & Bilder
+
+Die Kategorie **Quittungen** wurde aus diesem Bereich entfernt. Bei neuen Uploads stehen nur noch **Protokolle**, **Dokumente** und **Bilder** zur Auswahl. Bereits vorhandene ältere Dateien mit der Kategorie „Quittungen“ werden nicht gelöscht oder automatisch umkategorisiert.
+
+## Runde Geburtstage
+
+Unter **Einstellungen → Warnungen & Erinnerungen** gibt es jetzt:
+- **Runde Geburtstage hervorheben**
+- frei konfigurierbare **Runde Geburtstagsalter**
+
+Standardmäßig: `20, 30, 40, 50, 60, 70, 80, 90, 100`.
+
+Runde Geburtstage werden auf der Übersicht mit 🎉 und dem Hinweis **Runder Geburtstag** hervorgehoben. In den nächsten 30 Tagen anstehende runde Geburtstage erscheinen außerdem im Hinweisstreifen. Das Vereinsjahr markiert sie ebenfalls besonders.

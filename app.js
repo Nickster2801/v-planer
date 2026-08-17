@@ -33,7 +33,7 @@ function defaultDB(){
       modules:{club:true,documents:true,finance:true},
       groupTypes:["Abteilung","Mannschaft","Trainingsgruppe","Vorstand","Ausschuss","Arbeitsgruppe","Projektgruppe"],
       fineCatalog:[],
-      reminders:{enabled:true,infoDays:14,warningDays:7,alarmDays:2,birthdayWeek:true,jubilee:true,jubileeYears:[10,20,25,30,40,50]}
+      reminders:{enabled:true,infoDays:14,warningDays:7,alarmDays:2,birthdayWeek:true,roundBirthdays:true,roundBirthdayAges:[20,30,40,50,60,70,80,90,100],jubilee:true,jubileeYears:[10,20,25,30,40,50]}
     },
     counters:{memberNo:1},
     tasks:[],projects:[],events:[],members:[],groups:[],functions:[],meetings:[],knowledge:[],documents:[],folders:[],fines:[],financeKassenKumpelState:null,financeKassenKumpelUpdatedAt:""
@@ -55,6 +55,9 @@ function normalizeDB(data){
       })).filter(x=>x.label&&x.amount>0)
     : [];
   out.settings.reminders={...base.settings.reminders,...(data?.settings?.reminders||{})};
+  out.settings.reminders.roundBirthdayAges=Array.isArray(data?.settings?.reminders?.roundBirthdayAges)
+    ? [...new Set(data.settings.reminders.roundBirthdayAges.map(Number).filter(n=>Number.isInteger(n)&&n>0&&n<=150))].sort((a,b)=>a-b)
+    : [...base.settings.reminders.roundBirthdayAges];
   out.settings.reminders.jubileeYears=Array.isArray(data?.settings?.reminders?.jubileeYears)
     ? [...new Set(data.settings.reminders.jubileeYears.map(Number).filter(n=>Number.isInteger(n)&&n>0&&n<=150))].sort((a,b)=>a-b)
     : [...base.settings.reminders.jubileeYears];
@@ -810,12 +813,19 @@ function renderCalendarSyncSettings(statusOverride=""){
         calendarId=googleCalendarId(),
         last=localStorage.getItem("v-planer-calendar-last-sync-v1")||"";
 
-  $("#calendarSyncEnabled").checked=!!prefs.enabled;
-  $("#calendarSyncEvents").checked=!!prefs.syncEvents;
-  $("#calendarSyncBirthdays").checked=!!prefs.syncBirthdays;
-  $("#calendarSyncTasks").checked=!!prefs.syncTasks;
-  $("#calendarSyncProjects").checked=!!prefs.syncProjects;
-  $("#calendarName").value=prefs.calendarName||"V-Planer";
+  const calendarFormValues={
+    calendarSyncEnabled:!!prefs.enabled,
+    calendarSyncEvents:!!prefs.syncEvents,
+    calendarSyncBirthdays:!!prefs.syncBirthdays,
+    calendarSyncTasks:!!prefs.syncTasks,
+    calendarSyncProjects:!!prefs.syncProjects
+  };
+  Object.entries(calendarFormValues).forEach(([id,value])=>{
+    const el=$("#"+id);
+    if(el)el.checked=value;
+  });
+  const calendarNameInput=$("#calendarName");
+  if(calendarNameInput)calendarNameInput.value=prefs.calendarName||"V-Planer";
 
   const state=$("#calendarConnectionState");
   if(state){
@@ -837,14 +847,23 @@ function renderCalendarSyncSettings(statusOverride=""){
   const btn=$("#connectCalendarBtn");
   if(btn)btn.textContent=connected?"Jetzt synchronisieren":known?"Erneut verbinden & synchronisieren":"Google Kalender verbinden";
 }
+function calendarCheckboxValue(id,fallback){
+  const el=$("#"+id);
+  return el?!!el.checked:!!fallback;
+}
+function calendarInputValue(id,fallback=""){
+  const el=$("#"+id);
+  return el?String(el.value||"").trim():String(fallback||"").trim();
+}
 function saveCalendarPrefsFromForm(){
+  const current=calendarPrefs();
   const prefs=saveCalendarPrefs({
-    enabled:$("#calendarSyncEnabled").checked,
-    syncEvents:$("#calendarSyncEvents").checked,
-    syncBirthdays:$("#calendarSyncBirthdays").checked,
-    syncTasks:$("#calendarSyncTasks").checked,
-    syncProjects:$("#calendarSyncProjects").checked,
-    calendarName:$("#calendarName").value.trim()||"V-Planer"
+    enabled:calendarCheckboxValue("calendarSyncEnabled",current.enabled),
+    syncEvents:calendarCheckboxValue("calendarSyncEvents",current.syncEvents),
+    syncBirthdays:calendarCheckboxValue("calendarSyncBirthdays",current.syncBirthdays),
+    syncTasks:calendarCheckboxValue("calendarSyncTasks",current.syncTasks),
+    syncProjects:calendarCheckboxValue("calendarSyncProjects",current.syncProjects),
+    calendarName:calendarInputValue("calendarName",current.calendarName)||"V-Planer"
   });
   renderCalendarSyncSettings();
   if(hasUsableCalendarToken()&&prefs.enabled)scheduleCalendarAutoSync();
@@ -853,8 +872,14 @@ async function connectAndSyncCalendar(){
   saveCalendarPrefsFromForm();
   const prefs=calendarPrefs();
   if(!prefs.enabled){
-    $("#calendarSyncEnabled").checked=true;
-    saveCalendarPrefsFromForm();
+    const enabledBox=$("#calendarSyncEnabled");
+    if(enabledBox){
+      enabledBox.checked=true;
+      saveCalendarPrefsFromForm();
+    }else{
+      saveCalendarPrefs({...prefs,enabled:true});
+      renderCalendarSyncSettings();
+    }
   }
   await ensureCalendarAccess();
   await syncGoogleCalendar({interactive:true});
@@ -1138,6 +1163,27 @@ function daysToBirthday(m, ref=new Date()){
 }
 function upcomingBirthdays(maxDays=7){ return activeRows("members").filter(m=>m.status!=="deceased"&&m.birthDate).map(m=>({...m,_days:daysToBirthday(m)})).filter(m=>m._days>=0&&m._days<=maxDays).sort((a,b)=>a._days-b._days); }
 function jubileeYears(m,year=new Date().getFullYear()){ if(!m.entryDate)return 0; return year-Number(m.entryDate.slice(0,4)); }
+function configuredRoundBirthdayAges(){
+  const values=db.settings.reminders?.roundBirthdayAges;
+  return Array.isArray(values)?values.map(Number).filter(n=>Number.isInteger(n)&&n>0):[];
+}
+function isRoundBirthdayAge(age){
+  return db.settings.reminders?.roundBirthdays!==false && configuredRoundBirthdayAges().includes(Number(age));
+}
+function upcomingRoundBirthdays(maxDays=30){
+  if(db.settings.reminders?.roundBirthdays===false)return[];
+  return activeRows("members")
+    .filter(m=>m.status!=="deceased"&&m.birthDate)
+    .map(m=>{
+      const info=nextRecurringInfo(m.birthDate);
+      if(!info)return null;
+      const age=info.year-Number(m.birthDate.slice(0,4));
+      return {...m,_days:info.days,_date:info.date,_age:age};
+    })
+    .filter(Boolean)
+    .filter(m=>m._days>=0&&m._days<=maxDays&&isRoundBirthdayAge(m._age))
+    .sort((a,b)=>a._days-b._days||memberFullName(a).localeCompare(memberFullName(b),"de"));
+}
 function configuredJubileeYears(){
   const values=db.settings.reminders?.jubileeYears;
   return Array.isArray(values)?values.map(Number).filter(n=>Number.isInteger(n)&&n>0):[];
@@ -1188,7 +1234,7 @@ function dashboardPersonalEvents(limit=8){
       const info=nextRecurringInfo(m.birthDate);
       if(!info)return null;
       const age=info.year-Number(m.birthDate.slice(0,4));
-      return {...m,_kind:"birthday",_days:info.days,_date:info.date,_age:age};
+      return {...m,_kind:"birthday",_days:info.days,_date:info.date,_age:age,_roundBirthday:isRoundBirthdayAge(age)};
     })
     .filter(Boolean);
 
@@ -1269,7 +1315,8 @@ function renderDashboard(){
     .map(m=>{
       const info=nextRecurringInfo(m.birthDate);
       if(!info)return null;
-      return {...m,_days:info.days,_date:info.date,_age:info.year-Number(m.birthDate.slice(0,4))};
+      const age=info.year-Number(m.birthDate.slice(0,4));
+      return {...m,_days:info.days,_date:info.date,_age:age,_roundBirthday:isRoundBirthdayAge(age)};
     })
     .filter(Boolean)
     .sort((a,b)=>a._days-b._days||memberFullName(a).localeCompare(memberFullName(b),"de"))[0]||null;
@@ -1277,7 +1324,7 @@ function renderDashboard(){
   if(nextBirthday){
     $("#metricBirthdays").textContent=nextBirthday._days===0?"Heute":nextBirthday._days===1?"Morgen":`in ${nextBirthday._days} Tagen`;
     const hint=$("#metricBirthdayHint");
-    if(hint)hint.textContent=`${memberFullName(nextBirthday)} · ${fmtDate(nextBirthday._date)} · wird ${nextBirthday._age}`;
+    if(hint)hint.textContent=`${nextBirthday._roundBirthday?"Runder Geburtstag · ":""}${memberFullName(nextBirthday)} · ${fmtDate(nextBirthday._date)} · wird ${nextBirthday._age}`;
   }else{
     $("#metricBirthdays").textContent="—";
     const hint=$("#metricBirthdayHint");
@@ -1293,6 +1340,8 @@ function renderDashboard(){
     return p.status!=="closed"&&days!==null&&days<=db.settings.reminders.alarmDays&&days>=0;
   }).length; if(alarms)alertItems.push(`${alarms} Projekt${alarms===1?"":"e"} im Alarm-Zeitraum`);
   if(db.settings.reminders.birthdayWeek&&bdays.length)alertItems.push(`${bdays.length} Geburtstag${bdays.length===1?"":"e"} in den nächsten 7 Tagen`);
+  const roundBirthdays=upcomingRoundBirthdays(30);
+  if(roundBirthdays.length)alertItems.push(`${roundBirthdays.length} runde${roundBirthdays.length===1?"r Geburtstag":" Geburtstage"} in den nächsten 30 Tagen`);
   $("#alertStrip").classList.toggle("hidden",!alertItems.length); $("#alertStrip").textContent=alertItems.length?`⚠ ${alertItems.join(" · ")}`:"";
 
   const list=open.slice().sort((a,b)=>(a.due||"9999").localeCompare(b.due||"9999"));
@@ -1308,16 +1357,17 @@ function renderDashboard(){
   const personalEvents=dashboardPersonalEvents(8);
   $("#dashboardBirthdays").innerHTML=personalEvents.length?personalEvents.map(item=>{
     const isJubilee=item._kind==="jubilee";
+    const isRound=!isJubilee&&!!item._roundBirthday;
     const meta=isJubilee
       ?`${fmtDate(item._date)} · ${item._years}. Vereinsjubiläum · ${relativePersonalDateText(item._days)}`
-      :`${fmtDate(item._date)} · Geburtstag · ${relativePersonalDateText(item._days)} · wird ${item._age}`;
-    return `<button type="button" class="birthday-row personal-event-row" data-dashboard-member="${item.id}">
-      <div class="person-dot">${isJubilee?"★":"🎂"}</div>
+      :`${fmtDate(item._date)} · ${isRound?"Runder Geburtstag":"Geburtstag"} · ${relativePersonalDateText(item._days)} · wird ${item._age}`;
+    return `<button type="button" class="birthday-row personal-event-row ${isRound?"round-birthday-row":""}" data-dashboard-member="${item.id}">
+      <div class="person-dot">${isJubilee?"★":isRound?"🎉":"🎂"}</div>
       <div class="personal-event-copy">
         <div class="mini-title">${esc(memberFullName(item))}</div>
         <div class="mini-meta">${esc(meta)}</div>
       </div>
-      <span class="personal-event-type ${isJubilee?"jubilee":"birthday"}">${isJubilee?"Jubiläum":"Geburtstag"}</span>
+      <span class="personal-event-type ${isJubilee?"jubilee":isRound?"round-birthday":"birthday"}">${isJubilee?"Jubiläum":isRound?"Runder Geburtstag":"Geburtstag"}</span>
     </button>`;
   }).join(""):`<div class="empty">Keine Geburtstage oder Jubiläen vorhanden.</div>`;
 
@@ -2028,7 +2078,7 @@ function yearEntriesForMonth(year,monthIndex){
     const date=recurringDateForYear(m.birthDate,year);
     if(date&&Number(date.slice(5,7))===monthIndex+1){
       const age=Math.max(0,year-Number(m.birthDate.slice(0,4)));
-      rows.push({kind:"birthday",id:m.id,date,sortDate:date,title:`${memberFullName(m)} · ${age}. Geburtstag`,record:m});
+      rows.push({kind:"birthday",id:m.id,date,sortDate:date,title:`${memberFullName(m)} · ${age}. Geburtstag`,record:m,age,roundBirthday:isRoundBirthdayAge(age)});
     }
   });
   activeRows("members").filter(m=>m.status!=="deceased"&&m.entryDate).forEach(m=>{
@@ -2059,6 +2109,11 @@ function yearEntryHTML(item){
     jubilee:{icon:"★",label:"Vereinsjubiläum",cls:"year-jubilee-button"}
   }[item.kind];
   const dataAttr=item.kind==="task"?`data-year-task="${item.id}"`:item.kind==="project"?`data-year-project="${item.id}"`:`data-year-member="${item.id}"`;
+  if(item.kind==="birthday"&&item.roundBirthday){
+    meta.icon="🎉";
+    meta.label="Runder Geburtstag";
+    meta.cls+=" year-round-birthday-button";
+  }
   let sub=meta.label;
   if(item.kind==="task")sub+=` · ${statusLabel(item.record.status)}`;
   if(item.kind==="project")sub+=` · ${statusLabel(item.record.status)}`;
@@ -2348,12 +2403,34 @@ function bindFineMemberSearch(){
   toggle.onclick=()=>{panel.hidden=!panel.hidden;if(!panel.hidden){input.value="";renderFineMemberSearch("");setTimeout(()=>input.focus(),0)}};
   input.addEventListener("input",()=>renderFineMemberSearch(input.value));
 }
+const fineCatalogUi={
+  query:"",
+  editingId:"",
+  feedback:"",
+  highlightId:""
+};
 function fineCatalogUsageCount(catalogId){
   return activeRows("fines").filter(f=>f.fineCatalogId===catalogId).length;
 }
+function fineCatalogSortedRows(){
+  return fineCatalog().slice().sort((a,b)=>
+    String(a.label||"").localeCompare(String(b.label||""),"de",{sensitivity:"base"}) ||
+    Number(a.amount||0)-Number(b.amount||0)
+  );
+}
+function fineCatalogFilteredRows(){
+  const q=String(fineCatalogUi.query||"").trim().toLocaleLowerCase("de-DE");
+  const rows=fineCatalogSortedRows();
+  if(!q)return rows;
+  return rows.filter(item=>
+    String(item.label||"").toLocaleLowerCase("de-DE").includes(q) ||
+    fineMoney(item.amount).toLocaleLowerCase("de-DE").includes(q)
+  );
+}
 function fineCatalogCardHTML(item){
   const uses=fineCatalogUsageCount(item.id);
-  return `<div class="fine-catalog-card">
+  const highlighted=item.id===fineCatalogUi.highlightId;
+  return `<div class="fine-catalog-card ${highlighted?"is-highlighted":""}" data-catalog-row="${esc(item.id)}">
     <div class="fine-catalog-card-main">
       <div class="fine-catalog-card-head">
         <b>${esc(item.label)}</b>
@@ -2367,34 +2444,72 @@ function fineCatalogCardHTML(item){
     </div>
   </div>`;
 }
-function renderFineCatalogDialog(){
-  const dlg=$("#detailModal");
-  const rows=fineCatalog().slice().sort((a,b)=>String(a.label||"").localeCompare(String(b.label||""),"de",{sensitivity:"base"}));
+function fineCatalogEditorHTML(){
+  if(!fineCatalogUi.editingId)return "";
+  const isNew=fineCatalogUi.editingId==="__new__";
+  const item=isNew?{label:"",amount:""}:fineCatalog().find(x=>x.id===fineCatalogUi.editingId);
+  if(!item)return "";
 
-  $("#detailTitle").textContent="Strafkatalog";
-  $("#detailBody").innerHTML=`<div class="fine-catalog-overview">
-    <div class="fine-catalog-summary">
+  return `<div class="fine-catalog-inline-editor" id="fineCatalogEditor">
+    <div class="fine-catalog-inline-head">
       <div>
-        <b>${rows.length} Strafart${rows.length===1?"":"en"}</b>
-        <span>Alle vorgefertigten Strafen für die schnelle Vergabe an Mitglieder.</span>
+        <b>${isNew?"Neue Strafe":"Strafe bearbeiten"}</b>
+        <span>${isNew?"Bezeichnung und Standardbetrag festlegen.":"Änderungen gelten für zukünftige Vergaben; bereits vergebene Strafen bleiben unverändert."}</span>
       </div>
-      <button class="btn primary" id="newCatalogFineBtn" type="button">+ Neue Strafe</button>
+      <button class="icon-btn fine-catalog-editor-close" id="cancelCatalogEditTop" type="button" aria-label="Eingabe schließen">×</button>
     </div>
-    <div class="fine-catalog-overview-list">
-      ${rows.length?rows.map(fineCatalogCardHTML).join(""):`<div class="empty">Noch keine Strafen im Katalog.</div>`}
+    <div class="fine-catalog-inline-form">
+      <label>Bezeichnung
+        <input id="catalogFineLabel" value="${esc(item.label||"")}" placeholder="z. B. Arbeitsdienst versäumt" autocomplete="off">
+      </label>
+      <label>Betrag (€)
+        <input id="catalogFineAmount" type="number" min="0.01" step="0.01" inputmode="decimal" value="${esc(item.amount||"")}">
+      </label>
+    </div>
+    <div class="fine-catalog-inline-actions">
+      <button class="btn secondary" id="cancelCatalogEdit" type="button">Abbrechen</button>
+      <button class="btn primary" id="saveCatalogEdit" type="button">${isNew?"Strafe hinzufügen":"Änderungen speichern"}</button>
     </div>
   </div>`;
+}
+function fineCatalogListHTML(){
+  const total=fineCatalog().length;
+  const rows=fineCatalogFilteredRows();
 
-  $("#newCatalogFineBtn").onclick=()=>{
-    dlg.close();
-    openFineCatalogEntryModal();
-  };
+  if(!total){
+    return `<div class="fine-catalog-empty">
+      <div class="fine-catalog-empty-icon">📋</div>
+      <b>Noch keine Strafen im Katalog</b>
+      <span>Lege häufig verwendete Strafen einmal an und wähle sie später bei der Vergabe direkt aus.</span>
+      <button class="btn primary" id="emptyNewCatalogFineBtn" type="button">+ Erste Strafe anlegen</button>
+    </div>`;
+  }
+
+  if(!rows.length){
+    return `<div class="fine-catalog-empty compact">
+      <b>Keine passende Strafe gefunden</b>
+      <span>Ändere den Suchbegriff oder lege eine neue Strafart an.</span>
+    </div>`;
+  }
+
+  return rows.map(fineCatalogCardHTML).join("");
+}
+function updateFineCatalogList(){
+  const list=$("#fineCatalogList");
+  if(!list)return;
+  list.innerHTML=fineCatalogListHTML();
+
+  const total=fineCatalog().length,visible=fineCatalogFilteredRows().length;
+  const count=$("#fineCatalogCount");
+  if(count)count.textContent=fineCatalogUi.query?`${visible} von ${total} Strafarten`:`${total} Strafart${total===1?"":"en"}`;
+
+  bindFineCatalogListActions();
+}
+function bindFineCatalogListActions(){
+  $("#emptyNewCatalogFineBtn")?.addEventListener("click",()=>startFineCatalogEdit("__new__"));
 
   $$("[data-edit-catalog]").forEach(btn=>btn.onclick=()=>{
-    const item=fineCatalog().find(x=>x.id===btn.dataset.editCatalog);
-    if(!item)return;
-    dlg.close();
-    openFineCatalogEntryModal(item);
+    startFineCatalogEdit(btn.dataset.editCatalog);
   });
 
   $$("[data-delete-catalog]").forEach(btn=>btn.onclick=()=>{
@@ -2403,7 +2518,7 @@ function renderFineCatalogDialog(){
 
     const uses=fineCatalogUsageCount(item.id);
     const note=uses
-      ?`\n\nDiese Strafart wurde bereits ${uses}× vergeben. Die bereits vergebenen Strafen bleiben unverändert erhalten.`
+      ?`\n\nDiese Strafart wurde bereits ${uses}× vergeben. Bereits vergebene Strafen bleiben unverändert erhalten.`
       :"";
 
     if(!confirm(`„${item.label}“ wirklich aus dem Strafkatalog löschen?${note}`))return;
@@ -2411,57 +2526,164 @@ function renderFineCatalogDialog(){
     db.settings.fineCatalog=fineCatalog().filter(x=>x.id!==item.id);
     db.settingsUpdatedAt=now();
     saveLocal();
-    renderFineCatalogDialog();
+
+    if(fineCatalogUi.editingId===item.id)fineCatalogUi.editingId="";
+    fineCatalogUi.highlightId="";
+    fineCatalogUi.feedback=`„${item.label}“ wurde aus dem Strafkatalog gelöscht.`;
+    renderFineCatalogDialog({focusSearch:false});
   });
 }
-function openFineCatalogModal(){
-  renderFineCatalogDialog();
+function startFineCatalogEdit(id="__new__"){
+  fineCatalogUi.editingId=id;
+  fineCatalogUi.feedback="";
+  fineCatalogUi.highlightId="";
+  renderFineCatalogDialog({focusEditor:true});
+}
+function cancelFineCatalogEdit(){
+  fineCatalogUi.editingId="";
+  fineCatalogUi.feedback="";
+  renderFineCatalogDialog({focusSearch:false});
+}
+function saveFineCatalogEdit(){
+  const isNew=fineCatalogUi.editingId==="__new__";
+  const label=$("#catalogFineLabel")?.value.trim()||"";
+  const amount=Number($("#catalogFineAmount")?.value);
+
+  if(!label){
+    $("#catalogFineLabel")?.focus();
+    alert("Bitte eine Bezeichnung eintragen.");
+    return;
+  }
+  if(!(amount>0)){
+    $("#catalogFineAmount")?.focus();
+    alert("Bitte einen Betrag größer 0 eingeben.");
+    return;
+  }
+
+  const editingId=isNew?"":fineCatalogUi.editingId;
+  const duplicate=fineCatalog().find(x=>
+    x.id!==editingId &&
+    String(x.label||"").trim().toLocaleLowerCase("de-DE")===label.toLocaleLowerCase("de-DE")
+  );
+  if(duplicate&&!confirm(`Eine Strafart mit der Bezeichnung „${duplicate.label}“ existiert bereits. Trotzdem speichern?`))return;
+
+  let savedItem;
+  if(isNew){
+    savedItem={id:uid(),label,amount:Math.round(amount*100)/100};
+    db.settings.fineCatalog.push(savedItem);
+  }else{
+    savedItem=fineCatalog().find(x=>x.id===editingId);
+    if(!savedItem){
+      alert("Der Katalogeintrag ist nicht mehr vorhanden.");
+      fineCatalogUi.editingId="";
+      renderFineCatalogDialog();
+      return;
+    }
+    savedItem.label=label;
+    savedItem.amount=Math.round(amount*100)/100;
+  }
+
+  db.settingsUpdatedAt=now();
+  saveLocal();
+
+  fineCatalogUi.editingId="";
+  fineCatalogUi.highlightId=savedItem.id;
+  fineCatalogUi.feedback=isNew
+    ?`„${savedItem.label}“ wurde zum Strafkatalog hinzugefügt.`
+    :`„${savedItem.label}“ wurde aktualisiert.`;
+
+  // The editor closes immediately. The user stays in the catalog and sees
+  // the newly saved/updated row directly in the list.
+  renderFineCatalogDialog({scrollToHighlight:true});
+
+  setTimeout(()=>{
+    if(fineCatalogUi.highlightId===savedItem.id){
+      fineCatalogUi.highlightId="";
+      document.querySelector(`[data-catalog-row="${CSS.escape(savedItem.id)}"]`)?.classList.remove("is-highlighted");
+    }
+  },2200);
+}
+function renderFineCatalogDialog({focusEditor=false,focusSearch=false,scrollToHighlight=false}={}){
   const dlg=$("#detailModal");
+  const total=fineCatalog().length,visible=fineCatalogFilteredRows().length;
+
+  $("#detailTitle").textContent="Strafkatalog";
+  $("#detailBody").innerHTML=`<div class="fine-catalog-overview">
+    <div class="fine-catalog-summary">
+      <div>
+        <b id="fineCatalogCount">${fineCatalogUi.query?`${visible} von ${total} Strafarten`:`${total} Strafart${total===1?"":"en"}`}</b>
+        <span>Vorlagen für häufig verwendete Strafen. Neue Einträge stehen sofort bei „Neue Strafe“ zur Auswahl.</span>
+      </div>
+      <button class="btn primary" id="newCatalogFineBtn" type="button">+ Neue Strafe</button>
+    </div>
+
+    ${fineCatalogUi.feedback?`<div class="fine-catalog-feedback" role="status">✓ ${esc(fineCatalogUi.feedback)}</div>`:""}
+
+    ${fineCatalogEditorHTML()}
+
+    ${total?`<div class="fine-catalog-tools">
+      <div class="search-with-icon fine-catalog-search">
+        <span>🔍</span>
+        <input id="fineCatalogSearch" type="search" value="${esc(fineCatalogUi.query)}" placeholder="Strafkatalog durchsuchen …" autocomplete="off">
+      </div>
+    </div>`:""}
+
+    <div class="fine-catalog-overview-list" id="fineCatalogList">
+      ${fineCatalogListHTML()}
+    </div>
+  </div>`;
+
+  $("#newCatalogFineBtn").onclick=()=>startFineCatalogEdit("__new__");
+  $("#cancelCatalogEdit")?.addEventListener("click",cancelFineCatalogEdit);
+  $("#cancelCatalogEditTop")?.addEventListener("click",cancelFineCatalogEdit);
+  $("#saveCatalogEdit")?.addEventListener("click",saveFineCatalogEdit);
+
+  $("#catalogFineLabel")?.addEventListener("keydown",e=>{
+    if(e.key==="Enter"){
+      e.preventDefault();
+      $("#catalogFineAmount")?.focus();
+    }
+  });
+  $("#catalogFineAmount")?.addEventListener("keydown",e=>{
+    if(e.key==="Enter"){
+      e.preventDefault();
+      saveFineCatalogEdit();
+    }
+  });
+
+  const search=$("#fineCatalogSearch");
+  if(search){
+    search.addEventListener("input",()=>{
+      fineCatalogUi.query=search.value;
+      updateFineCatalogList();
+    });
+    search.addEventListener("keydown",e=>{
+      if(e.key==="Escape"&&search.value){
+        e.preventDefault();
+        search.value="";
+        fineCatalogUi.query="";
+        updateFineCatalogList();
+      }
+    });
+  }
+
+  bindFineCatalogListActions();
+
+  if(focusEditor)setTimeout(()=>$("#catalogFineLabel")?.focus(),0);
+  else if(focusSearch)setTimeout(()=>$("#fineCatalogSearch")?.focus(),0);
+
+  if(scrollToHighlight&&fineCatalogUi.highlightId){
+    setTimeout(()=>document.querySelector(`[data-catalog-row="${CSS.escape(fineCatalogUi.highlightId)}"]`)?.scrollIntoView({behavior:"smooth",block:"nearest"}),30);
+  }
+
   if(!dlg.open)dlg.showModal();
 }
-function openFineCatalogEntryModal(rec=null){
-  const r=rec||{label:"",amount:""};
-
-  showModal(rec?"Strafe bearbeiten":"Neue Strafe im Strafkatalog",`<div class="form-grid">
-    <label class="full">Bezeichnung<input id="catalogFineLabel" value="${esc(r.label||"")}" placeholder="z. B. Arbeitsdienst versäumt"></label>
-    <label>Betrag (€)<input id="catalogFineAmount" type="number" min="0.01" step="0.01" inputmode="decimal" value="${esc(r.amount||"")}"></label>
-    <div class="form-note full">Dieser Eintrag ist eine Vorlage. Bereits an Mitglieder vergebene Strafen werden bei späteren Änderungen nicht rückwirkend verändert.</div>
-  </div>`,()=>{
-    const label=$("#catalogFineLabel").value.trim();
-    const amount=Number($("#catalogFineAmount").value);
-
-    if(!label){
-      alert("Bitte eine Bezeichnung eintragen.");
-      return false;
-    }
-    if(!(amount>0)){
-      alert("Bitte einen Betrag größer 0 eingeben.");
-      return false;
-    }
-
-    if(rec){
-      const target=fineCatalog().find(x=>x.id===rec.id);
-      if(!target){
-        alert("Der Katalogeintrag ist nicht mehr vorhanden.");
-        return false;
-      }
-      target.label=label;
-      target.amount=Math.round(amount*100)/100;
-    }else{
-      db.settings.fineCatalog.push({
-        id:uid(),
-        label,
-        amount:Math.round(amount*100)/100
-      });
-    }
-
-    db.settingsUpdatedAt=now();
-    saveLocal();
-    setTimeout(()=>openFineCatalogModal(),0);
-    return true;
-  });
+function openFineCatalogModal(){
+  fineCatalogUi.editingId="";
+  fineCatalogUi.feedback="";
+  fineCatalogUi.highlightId="";
+  renderFineCatalogDialog();
 }
-
 function openFineModal(rec=null){
   const r=rec||{memberId:"",memberNameSnapshot:"",memberNoSnapshot:"",date:todayStr(),dueDate:"",reason:"",amount:"",status:"open",paidDate:"",notes:"",fineCatalogId:""};
   showModal(rec?"Strafe bearbeiten":"Neue Strafe",`<div class="form-grid">
@@ -2602,6 +2824,11 @@ function renderFolderBrowser(area){
   path.innerHTML=`<button type="button" class="breadcrumb-link" data-folder-crumb="" data-folder-area="${area}">${esc(AREA_META[area].label)}</button>${chain.map(f=>`<span>›</span><button type="button" class="breadcrumb-link" data-folder-crumb="${f.id}" data-folder-area="${area}">${esc(f.name)}</button>`).join("")}`;
   $$(`[data-folder-select][data-folder-area="${area}"]`).forEach(btn=>btn.onclick=()=>{selectedFolderByArea[area]=btn.dataset.folderSelect||"";renderArea(area)});
   $$(`[data-folder-crumb][data-folder-area="${area}"]`).forEach(btn=>btn.onclick=()=>{selectedFolderByArea[area]=btn.dataset.folderCrumb||"";renderArea(area)});
+  $$(`[data-export-folder="${area}"]`).forEach(btn=>{
+    btn.disabled=false;
+    btn.textContent=selected?"Ordner exportieren":"Bereich exportieren";
+    btn.title=selected?"Aktuellen Ordner inklusive Unterordnern exportieren":"Gesamten Bereich inklusive Ordnerstruktur exportieren";
+  });
   $$(`[data-rename-folder="${area}"]`).forEach(btn=>btn.disabled=!selected);
   $$(`[data-delete-folder="${area}"]`).forEach(btn=>btn.disabled=!selected);
 }
@@ -2620,12 +2847,14 @@ function fileTableRows(area,categoryMode=false){
     <td>${d.createdAt?new Date(d.createdAt).toLocaleString("de-DE"):"—"}</td>
     <td class="doc-actions">
       ${d.webViewLink?`<a class="action-link" href="${esc(d.webViewLink)}" target="_blank" rel="noopener">Öffnen</a>`:""}
+      <button class="action-link" type="button" data-export-file="${d.id}">Exportieren</button>
       <button class="action-link" type="button" data-move-file="${d.id}">Verschieben</button>
       <button class="action-link danger-text" type="button" data-delete-file="${d.id}">Löschen</button>
     </td>
   </tr>`).join("");
 }
 function bindFileActions(scope=document){
+  scope.querySelectorAll?.("[data-export-file]")?.forEach(btn=>btn.onclick=()=>exportStoredFile(btn.dataset.exportFile,btn));
   scope.querySelectorAll?.("[data-move-file]")?.forEach(btn=>btn.onclick=()=>openMoveFileModal(btn.dataset.moveFile));
   scope.querySelectorAll?.("[data-delete-file]")?.forEach(btn=>btn.onclick=()=>deleteStoredFile(btn.dataset.deleteFile));
 }
@@ -2643,7 +2872,7 @@ function renderMeetings(){
 }
 function renderDocuments(){
   renderFolderBrowser("documents");
-  const all=areaDocs("documents"),cats=["Quittungen","Protokolle","Dokumente","Bilder"];
+  const all=areaDocs("documents"),cats=["Protokolle","Dokumente","Bilder"];
   $("#docCategories").innerHTML=cats.map(c=>{const r=all.filter(d=>d.category===c);return `<div class="card doc-category"><span>${c}</span><b>${r.length}</b><small class="muted">${fmtSize(r.reduce((s,d)=>s+(d.size||0),0))}</small></div>`}).join("");
   $("#docTable").innerHTML=fileTableRows("documents",true);
   bindFileActions($("#view-documents"));
@@ -2707,6 +2936,236 @@ async function deleteCurrentFolder(area){
 $$("[data-new-folder]").forEach(btn=>btn.onclick=()=>openFolderModal(btn.dataset.newFolder));
 $$("[data-rename-folder]").forEach(btn=>btn.onclick=()=>openRenameFolderModal(btn.dataset.renameFolder));
 $$("[data-delete-folder]").forEach(btn=>btn.onclick=()=>deleteCurrentFolder(btn.dataset.deleteFolder));
+
+
+function safeExportName(name,fallback="Export"){
+  const clean=String(name||fallback)
+    .replace(/[\\/:*?"<>|]+/g,"_")
+    .replace(/\s+/g," ")
+    .trim()
+    .replace(/[. ]+$/g,"");
+  return clean||fallback;
+}
+function saveBrowserBlob(blob,fileName){
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;
+  a.download=safeExportName(fileName,"V-Planer-Export");
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1500);
+}
+function setAreaExportStatus(area,text="",error=false){
+  const el=document.querySelector(`[data-export-status="${area}"]`);
+  if(!el)return;
+  el.textContent=text;
+  el.classList.toggle("error",!!error);
+}
+async function driveFileBlob(documentRecord){
+  if(!documentRecord?.id)throw new Error("Für diese Datei fehlt die Google-Drive-ID.");
+  if(!hasUsableAccessToken())await ensureDriveAccess();
+  const response=await driveFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(documentRecord.id)}?alt=media`);
+  return await response.blob();
+}
+async function exportStoredFile(fileId,button=null){
+  const d=byId("documents",fileId);
+  if(!d)return;
+  const original=button?.textContent||"Exportieren";
+  if(button){button.disabled=true;button.textContent="Lade …";}
+  try{
+    const blob=await driveFileBlob(d);
+    saveBrowserBlob(blob,d.name||"Datei");
+  }catch(e){
+    alert(`Datei konnte nicht exportiert werden:\n${e.message}`);
+  }finally{
+    if(button){button.disabled=false;button.textContent=original;}
+  }
+}
+function exportFolderIds(area,rootId=""){
+  const result=[rootId||""],seen=new Set(result);
+  const walk=parentId=>{
+    folderChildren(area,parentId).forEach(f=>{
+      if(seen.has(f.id))return;
+      seen.add(f.id);result.push(f.id);walk(f.id);
+    });
+  };
+  walk(rootId||"");
+  return result;
+}
+function relativeFolderExportPath(area,folderId,rootId=""){
+  if(!folderId)return "";
+  let chain=folderChain(area,folderId);
+  if(rootId){
+    const idx=chain.findIndex(f=>f.id===rootId);
+    if(idx>=0)chain=chain.slice(idx+1);
+  }
+  return chain.map(f=>safeExportName(f.name,"Ordner")).join("/");
+}
+function textExportForEntry(area,entry){
+  if(area==="meetings"){
+    const decisions=(entry.decisions||[]).map((d,i)=>`${i+1}. ${d}`).join("\n");
+    return [
+      `Sitzung: ${entry.title||""}`,
+      `Datum: ${entry.date?fmtDate(entry.date):"—"}`,
+      `Gruppe: ${groupName(entry.groupId)}`,
+      "",
+      "Notizen",
+      entry.notes||"—",
+      "",
+      "Beschlüsse",
+      decisions||"—"
+    ].join("\n");
+  }
+  if(area==="knowledge"){
+    return [
+      `Vereinswissen: ${entry.title||""}`,
+      `Gruppe: ${groupName(entry.groupId)}`,
+      "",
+      entry.text||""
+    ].join("\n");
+  }
+  return "";
+}
+function uint16le(value){
+  const b=new Uint8Array(2),v=new DataView(b.buffer);v.setUint16(0,value&0xffff,true);return b;
+}
+function uint32le(value){
+  const b=new Uint8Array(4),v=new DataView(b.buffer);v.setUint32(0,value>>>0,true);return b;
+}
+let __vpCrcTable=null;
+function crc32(bytes){
+  if(!__vpCrcTable){
+    __vpCrcTable=new Uint32Array(256);
+    for(let n=0;n<256;n++){
+      let c=n;
+      for(let k=0;k<8;k++)c=(c&1)?(0xedb88320^(c>>>1)):(c>>>1);
+      __vpCrcTable[n]=c>>>0;
+    }
+  }
+  let crc=0xffffffff;
+  for(const byte of bytes)crc=__vpCrcTable[(crc^byte)&0xff]^(crc>>>8);
+  return (crc^0xffffffff)>>>0;
+}
+function zipDosDateTime(date=new Date()){
+  const d=date instanceof Date&&!Number.isNaN(date.getTime())?date:new Date();
+  const year=Math.max(1980,d.getFullYear());
+  const time=((d.getHours()&31)<<11)|((d.getMinutes()&63)<<5)|((Math.floor(d.getSeconds()/2))&31);
+  const dosDate=(((year-1980)&127)<<9)|(((d.getMonth()+1)&15)<<5)|(d.getDate()&31);
+  return {time,dosDate};
+}
+function concatUint8(parts){
+  const total=parts.reduce((sum,p)=>sum+p.length,0),out=new Uint8Array(total);
+  let offset=0;
+  parts.forEach(p=>{out.set(p,offset);offset+=p.length});
+  return out;
+}
+function buildStoreZip(entries){
+  const enc=new TextEncoder(),localParts=[],centralParts=[];
+  let offset=0,count=0;
+  for(const entry of entries){
+    const nameBytes=enc.encode(entry.name);
+    const data=entry.data instanceof Uint8Array?entry.data:new Uint8Array(entry.data||0);
+    if(nameBytes.length>65535)throw new Error("Ein Dateipfad ist für einen ZIP-Export zu lang.");
+    const crc=crc32(data),dt=zipDosDateTime(entry.date||new Date());
+    const local=concatUint8([
+      uint32le(0x04034b50),uint16le(20),uint16le(0x0800),uint16le(0),
+      uint16le(dt.time),uint16le(dt.dosDate),uint32le(crc),
+      uint32le(data.length),uint32le(data.length),uint16le(nameBytes.length),uint16le(0),nameBytes
+    ]);
+    localParts.push(local,data);
+
+    const central=concatUint8([
+      uint32le(0x02014b50),uint16le(20),uint16le(20),uint16le(0x0800),uint16le(0),
+      uint16le(dt.time),uint16le(dt.dosDate),uint32le(crc),
+      uint32le(data.length),uint32le(data.length),uint16le(nameBytes.length),
+      uint16le(0),uint16le(0),uint16le(0),uint16le(0),uint32le(entry.name.endsWith("/")?0x10:0),
+      uint32le(offset),nameBytes
+    ]);
+    centralParts.push(central);
+    offset+=local.length+data.length;
+    count++;
+  }
+  if(count>65535)throw new Error("Zu viele Dateien für einen einzelnen ZIP-Export.");
+  const central=concatUint8(centralParts),local=concatUint8(localParts);
+  const end=concatUint8([
+    uint32le(0x06054b50),uint16le(0),uint16le(0),uint16le(count),uint16le(count),
+    uint32le(central.length),uint32le(local.length),uint16le(0)
+  ]);
+  return new Blob([local,central,end],{type:"application/zip"});
+}
+function uniqueZipPath(path,used){
+  const normalized=String(path||"Datei").replace(/^\/+/,"");
+  if(!used.has(normalized)){used.add(normalized);return normalized}
+  const slash=normalized.lastIndexOf("/"),dir=slash>=0?normalized.slice(0,slash+1):"",file=slash>=0?normalized.slice(slash+1):normalized;
+  const dot=file.lastIndexOf("."),base=dot>0?file.slice(0,dot):file,ext=dot>0?file.slice(dot):"";
+  let n=2,next;
+  do{next=`${dir}${base} (${n++})${ext}`}while(used.has(next));
+  used.add(next);return next;
+}
+async function exportCurrentFolder(area,button=null){
+  if(!AREA_META[area])return;
+  const rootId=currentFolderId(area),rootFolder=rootId?byId("folders",rootId):null;
+  const label=rootFolder?.name||AREA_META[area].label;
+  const ids=exportFolderIds(area,rootId),idSet=new Set(ids);
+  const files=areaDocs(area).filter(d=>idSet.has(d.folderId||""));
+  const logicalEntries=(area==="meetings"?activeRows("meetings"):area==="knowledge"?activeRows("knowledge"):[])
+    .filter(r=>idSet.has(r.folderId||""));
+  const descendants=ids.filter(id=>id&&id!==rootId);
+
+  const estimated=files.reduce((sum,d)=>sum+(Number(d.size)||0),0);
+  if(estimated>250*1024*1024){
+    const ok=confirm(`Der Export enthält ungefähr ${fmtSize(estimated)} an Dateien.\n\nDer ZIP-Export wird vollständig im Browser erstellt und kann entsprechend Arbeitsspeicher benötigen. Trotzdem fortfahren?`);
+    if(!ok)return;
+  }
+
+  const original=button?.textContent||"Exportieren";
+  if(button){button.disabled=true;button.textContent="Exportiere …";}
+  setAreaExportStatus(area,`Export wird vorbereitet: ${files.length} Datei${files.length===1?"":"en"} …`);
+
+  try{
+    const zipEntries=[],used=new Set();
+
+    // Preserve empty/subfolder structure.
+    descendants.forEach(folderId=>{
+      const p=relativeFolderExportPath(area,folderId,rootId);
+      if(p){
+        const dirName=uniqueZipPath(`${p}/`,used);
+        zipEntries.push({name:dirName,data:new Uint8Array(0),date:new Date()});
+      }
+    });
+
+    // Export V-Planer-native meeting/knowledge entries as readable TXT files.
+    for(const entry of logicalEntries){
+      const path=relativeFolderExportPath(area,entry.folderId||"",rootId);
+      const prefix=path?`${path}/`:"";
+      const datePrefix=entry.date?`${entry.date}_`:"";
+      const name=uniqueZipPath(`${prefix}${datePrefix}${safeExportName(entry.title||"Eintrag")}.txt`,used);
+      zipEntries.push({name,data:new TextEncoder().encode(textExportForEntry(area,entry)),date:new Date(entry.updatedAt||entry.createdAt||Date.now())});
+    }
+
+    for(let i=0;i<files.length;i++){
+      const d=files[i];
+      setAreaExportStatus(area,`Lade Datei ${i+1} von ${files.length}: ${d.name}`);
+      const blob=await driveFileBlob(d);
+      const bytes=new Uint8Array(await blob.arrayBuffer());
+      const path=relativeFolderExportPath(area,d.folderId||"",rootId);
+      const name=uniqueZipPath(`${path?path+"/":""}${safeExportName(d.name||"Datei")}`,used);
+      zipEntries.push({name,data:bytes,date:new Date(d.createdAt||d.updatedAt||Date.now())});
+    }
+
+    const zip=buildStoreZip(zipEntries);
+    const stamp=new Date().toISOString().slice(0,10);
+    saveBrowserBlob(zip,`${safeExportName(label)}_${stamp}.zip`);
+    setAreaExportStatus(area,`Export fertig · ${files.length} Datei${files.length===1?"":"en"}${logicalEntries.length?` · ${logicalEntries.length} V-Planer-Eintrag${logicalEntries.length===1?"":"e"}`:""}`);
+  }catch(e){
+    setAreaExportStatus(area,"Export fehlgeschlagen.",true);
+    alert(`Ordner konnte nicht exportiert werden:\n${e.message}`);
+  }finally{
+    if(button){button.disabled=false;button.textContent=original;}
+  }
+}
+$$("[data-export-folder]").forEach(btn=>btn.onclick=()=>exportCurrentFolder(btn.dataset.exportFolder,btn));
 
 function openMoveFileModal(fileId){
   const d=byId("documents",fileId);if(!d)return;
@@ -2832,6 +3291,8 @@ function renderSettings(){
   $("#warningDaysLabel").textContent=r.warningDays;
   $("#alarmDaysLabel").textContent=r.alarmDays;
   $("#birthdayWeekReminder").checked=r.birthdayWeek;
+  $("#roundBirthdayReminder").checked=r.roundBirthdays!==false;
+  $("#roundBirthdayAgesInput").value=configuredRoundBirthdayAges().join(", ");
   $("#jubileeReminder").checked=r.jubilee;
   $("#jubileeYearsInput").value=configuredJubileeYears().join(", ");
   $("#storageLimit").value=s.storageLimitGB||5;
@@ -2875,6 +3336,13 @@ $("#saveSettingsBtn").onclick=()=>{
   db.settings.reminders.warningDays=Number($("#warningDays").value);
   db.settings.reminders.alarmDays=Number($("#alarmDays").value);
   db.settings.reminders.birthdayWeek=$("#birthdayWeekReminder").checked;
+  db.settings.reminders.roundBirthdays=$("#roundBirthdayReminder").checked;
+  const roundBirthdayAges=parseJubileeYearsInput($("#roundBirthdayAgesInput").value);
+  if(db.settings.reminders.roundBirthdays&&!roundBirthdayAges.length){
+    alert("Bitte mindestens ein Alter für runde Geburtstage eintragen, z. B. 20, 30, 40, 50, 60.");
+    return;
+  }
+  db.settings.reminders.roundBirthdayAges=roundBirthdayAges;
   db.settings.reminders.jubilee=$("#jubileeReminder").checked;
   const jubileeYears=parseJubileeYearsInput($("#jubileeYearsInput").value);
   if(db.settings.reminders.jubilee&&!jubileeYears.length){
@@ -2892,7 +3360,7 @@ $("#saveSettingsBtn").onclick=()=>{
 };
 
 
-["calendarSyncEnabled","calendarSyncEvents","calendarSyncTasks","calendarSyncProjects"].forEach(id=>{
+["calendarSyncEnabled","calendarSyncEvents","calendarSyncBirthdays","calendarSyncTasks","calendarSyncProjects"].forEach(id=>{
   $("#"+id)?.addEventListener("change",saveCalendarPrefsFromForm);
 });
 $("#calendarName")?.addEventListener("change",saveCalendarPrefsFromForm);

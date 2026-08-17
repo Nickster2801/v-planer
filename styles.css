@@ -913,3 +913,108 @@ input,select,textarea{font-size:16px}
 @media(max-width:420px){
   .project-linked-event-actions{grid-template-columns:1fr}
 }
+
+
+/* V-Planer 1.0.4 – Strafkatalog UX */
+.fine-catalog-overview{display:grid;gap:12px}
+.fine-catalog-summary{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:12px;border:1px solid var(--line);border-radius:12px;background:#f8fafc
+}
+.fine-catalog-summary>div{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fine-catalog-summary b{font-size:14px;color:#344054}
+.fine-catalog-summary span{font-size:10px;color:var(--muted);line-height:1.45}
+.fine-catalog-feedback{
+  padding:9px 11px;border-radius:10px;border:1px solid #bde5b1;
+  background:#f2fbef;color:#267326;font-size:11px;font-weight:750
+}
+.fine-catalog-inline-editor{
+  border:1px solid #b9d8f3;border-radius:13px;background:#f8fcff;
+  padding:12px;display:grid;gap:11px;box-shadow:0 7px 18px rgba(18,53,86,.06)
+}
+.fine-catalog-inline-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.fine-catalog-inline-head>div{display:grid;gap:3px}
+.fine-catalog-inline-head b{font-size:13px;color:#123b62}
+.fine-catalog-inline-head span{font-size:10px;color:var(--muted);line-height:1.4}
+.fine-catalog-editor-close{font-size:21px;line-height:1;padding:0 2px}
+.fine-catalog-inline-form{display:grid;grid-template-columns:minmax(0,1fr) 180px;gap:10px}
+.fine-catalog-inline-form label{font-size:11px;font-weight:750;color:#475467}
+.fine-catalog-inline-form input{
+  width:100%;margin-top:4px;padding:11px;border:1px solid var(--line);
+  border-radius:9px;background:#fff;min-height:44px
+}
+.fine-catalog-inline-form input:focus{outline:2px solid rgba(7,90,168,.18);border-color:#8ebde3}
+.fine-catalog-inline-actions{display:flex;justify-content:flex-end;gap:8px}
+.fine-catalog-tools{display:flex;gap:8px}
+.fine-catalog-search{width:100%;max-width:460px}
+.fine-catalog-search input{min-height:42px}
+.fine-catalog-overview-list{display:grid;gap:8px;max-height:48vh;overflow-y:auto;padding:2px}
+.fine-catalog-card{
+  display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;
+  border:1px solid var(--line);border-radius:12px;background:#fff;padding:11px 12px;
+  transition:border-color .18s ease,background .18s ease,box-shadow .18s ease
+}
+.fine-catalog-card.is-highlighted{
+  border-color:#83c76d;background:#f5fcf2;box-shadow:0 0 0 2px rgba(70,173,42,.10)
+}
+.fine-catalog-card-main{min-width:0}
+.fine-catalog-card-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.fine-catalog-card-head b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#344054}
+.fine-catalog-card-head strong{white-space:nowrap;color:var(--blue-dark);font-size:14px}
+.fine-catalog-card small{display:block;margin-top:5px;color:#667085;font-size:9px;font-weight:700}
+.fine-catalog-card-actions{display:flex;gap:7px}
+.fine-catalog-empty{
+  display:grid;justify-items:center;text-align:center;gap:7px;
+  padding:28px 16px;border:1px dashed #cfd8e3;border-radius:12px;background:#fbfcfd;color:var(--muted)
+}
+.fine-catalog-empty.compact{padding:20px}
+.fine-catalog-empty-icon{font-size:28px}
+.fine-catalog-empty b{color:#344054;font-size:13px}
+.fine-catalog-empty span{max-width:440px;font-size:10px;line-height:1.45}
+.fine-catalog-empty .btn{margin-top:5px}
+
+@media(max-width:700px){
+  .fine-catalog-summary{align-items:stretch;flex-direction:column}
+  .fine-catalog-summary .btn{width:100%;min-height:44px}
+  .fine-catalog-inline-form{grid-template-columns:1fr}
+  .fine-catalog-inline-actions{display:grid;grid-template-columns:1fr 1fr}
+  .fine-catalog-inline-actions .btn{width:100%;min-height:44px}
+  .fine-catalog-overview-list{max-height:none}
+  .fine-catalog-card{grid-template-columns:1fr}
+  .fine-catalog-card-actions{display:grid;grid-template-columns:1fr 1fr}
+  .fine-catalog-card-actions .btn{width:100%;min-height:44px}
+  .fine-catalog-search{max-width:none}
+}
+@media(max-width:420px){
+  .fine-catalog-inline-actions,.fine-catalog-card-actions{grid-template-columns:1fr}
+}
+
+
+/* V-Planer 1.0.4 – Bereichs-/Ordnerexport */
+.folder-toolbar{flex-wrap:wrap}
+.folder-export-status{
+  flex-basis:100%;
+  min-height:14px;
+  margin-top:-5px;
+  color:var(--muted);
+  font-size:10px;
+  line-height:1.35;
+}
+.folder-export-status.error{color:#b42318}
+.area-file-table .doc-actions{min-width:250px}
+.round-birthday-row{
+  background:linear-gradient(90deg,#fffaf0,#fff);
+}
+.personal-event-type.round-birthday{
+  background:#fff4d9;
+  color:#9a6700;
+}
+.year-round-birthday-button{
+  border-color:#ead49c!important;
+  background:#fffaf0!important;
+}
+@media(max-width:780px){
+  .folder-toolbar-actions .folder-export-btn{order:-1}
+  .folder-export-status{margin-top:0}
+  .area-file-table .doc-actions{min-width:0}
+}

@@ -1,4 +1,4 @@
-const CACHE = "v-planer-v1.0.4-fine-catalog-strafkatalog-projectmultiday-birthjub-nextbirthday-kanbandue-projecteventlink";
+const CACHE = "v-planer-v1.0.4-fine-catalog-strafkatalog-projectmultiday-birthjub-nextbirthday-kanbandue-projecteventlink-finecatalogux-calendarnullfix-export-roundbirthdays";
 const ASSETS = ["./","./index.html","./styles.css","./app.js","./config.js","./manifest.webmanifest","./assets/v-planer-logo.png","./icons/icon-192.png","./icons/icon-512.png"];
 self.addEventListener("install", e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS))));
 self.addEventListener("activate", e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))));
