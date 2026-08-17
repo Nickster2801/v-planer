@@ -65,3 +65,15 @@ Wichtige mobile Anpassungen:
 - Aufgabe/Projekt im Kalender anklicken und Bearbeitungsdialog prüfen.
 - Aufgabe/Projekt archivieren und prüfen, dass der Kalendereintrag verschwindet.
 - Mehrtägige Termine parallel zu Aufgaben/Projekten testen.
+
+## Google Kalender
+- Google Calendar API im Google-Cloud-Projekt aktivieren.
+- Einstellungen → Google Kalender → Synchronisierung aktivieren.
+- „Google Kalender verbinden“ ausführen und OAuth-Freigabe prüfen.
+- Prüfen, dass ein separater Kalender „V-Planer“ im Google Kalender erscheint.
+- Ein- und mehrtägigen Termin mit Uhrzeiten anlegen und synchronisieren.
+- Aufgabe mit Fälligkeit und Projekt mit Zieldatum synchronisieren.
+- Termin bearbeiten und prüfen, dass kein Duplikat entsteht, sondern der Google-Eintrag aktualisiert wird.
+- Aufgabe/Projekt archivieren und beim nächsten Sync das Entfernen aus Google Kalender prüfen.
+- Browser neu laden: anschließend „Erneut verbinden & synchronisieren“ prüfen.
+- Smartphone: Google-Kalender-App öffnen und Sichtbarkeit des Kalenders „V-Planer“ prüfen.

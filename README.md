@@ -360,3 +360,30 @@ Das wurde korrigiert:
 - das **Einstellungs-Zahnrad** ist wieder erreichbar
 - zusätzlich gibt es in der KassenKumpel-Navigation einen eigenen Reiter **⚙ Einstellungen**
 - alle bestehenden KassenKumpel-Einstellungen wie Konten, Kategorien, Veranstaltungen, Ansicht/Skalierung, Belegspeicher, Jahresverwaltung, Backups und weitere Verwaltungsfunktionen bleiben erreichbar
+
+## Google-Kalender-Synchronisierung
+
+Unter **Einstellungen → Google Kalender** kann V-Planer einseitig mit Google Kalender verbunden werden.
+
+### Funktionsweise
+- V-Planer legt beim ersten Sync einen eigenen sekundären Google-Kalender **„V-Planer“** an.
+- Termine werden mit Start-/Enddatum und Von-/Bis-Uhrzeit übertragen.
+- Termine ohne Uhrzeit werden als ganztägige Google-Kalender-Einträge angelegt.
+- Aufgaben werden am Fälligkeitsdatum als ganztägiger Eintrag angelegt.
+- Projekte werden am Zieldatum als ganztägiger Eintrag angelegt.
+- Änderungen in V-Planer aktualisieren den bestehenden Google-Kalender-Eintrag.
+- Gelöschte Termine sowie gelöschte oder archivierte Aufgaben/Projekte werden beim nächsten Sync aus dem V-Planer-Google-Kalender entfernt.
+- Änderungen direkt in Google Kalender werden **nicht zurück in V-Planer geschrieben**.
+- Die Verbindung ist pro Browser/Nutzer lokal. Es wird bewusst kein Google-Access-Token dauerhaft gespeichert.
+
+### Google Cloud
+Für die bestehende OAuth-Web-Client-ID muss im gleichen Google-Cloud-Projekt zusätzlich die **Google Calendar API** aktiviert werden.
+
+V-Planer verwendet den eingeschränkten Scope:
+
+`https://www.googleapis.com/auth/calendar.app.created`
+
+Dieser Scope erlaubt der Anwendung, eigene sekundäre Kalender zu erstellen und die Termine in diesen von der Anwendung erstellten Kalendern zu verwalten.
+
+### Nach einem Browser-Neustart
+Aus Sicherheitsgründen wird der Google-Access-Token nicht im Browser gespeichert. Bereits synchronisierte Termine bleiben natürlich im Google Kalender. Um neue Änderungen nach einem Neustart zu übertragen, genügt ein Klick auf **„Erneut verbinden & synchronisieren“**.

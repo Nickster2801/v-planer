@@ -6,6 +6,11 @@ const STORAGE_KEY = "v-planer-cloud-v1.0";
 const DRIVE_GRANT_KEY = "v-planer-drive-grant-known-v1";
 const APPDATA_FILE = "v-planer-data-v1.0.json";
 const SCOPES = "https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/drive.file";
+
+const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.app.created";
+const CALENDAR_GRANT_KEY = "v-planer-calendar-grant-known-v1";
+const CALENDAR_ID_KEY = "v-planer-google-calendar-id-v1";
+const CALENDAR_PREFS_KEY = "v-planer-google-calendar-prefs-v1";
 const COLLECTIONS = ["tasks","projects","events","members","groups","functions","meetings","knowledge","documents","folders","fines"];
 
 const $ = s => document.querySelector(s);
@@ -93,6 +98,9 @@ const AREA_META = {
 let accessToken="", tokenClient=null, rootFolderId="", syncTimer=null, cloudQuota=null, driveAreaFolderIds={};
 let tokenExpiresAt=0, tokenWaiter=null;
 
+let calendarAccessToken="", calendarTokenClient=null, calendarTokenExpiresAt=0, calendarTokenWaiter=null;
+let calendarSyncTimer=null, calendarSyncRunning=false;
+
 function allRows(collection){ return db[collection].filter(x=>!x.deletedAt); }
 function activeRows(collection){
   const rows=allRows(collection);
@@ -109,7 +117,459 @@ function markDeleted(collection,id){ const r=db[collection].find(x=>x.id===id); 
 function saveLocal(opts={}){
   db.updatedAt=now(); localStorage.setItem(STORAGE_KEY,JSON.stringify(db)); renderAll();
   if(opts.autoSync!==false && accessToken) scheduleAutoSync();
+  if(opts.autoCalendar!==false && hasUsableCalendarToken() && calendarPrefs().enabled) scheduleCalendarAutoSync();
 }
+function defaultCalendarPrefs(){
+  return {enabled:false,syncEvents:true,syncTasks:true,syncProjects:true,calendarName:"V-Planer"};
+}
+function calendarPrefs(){
+  try{
+    return {...defaultCalendarPrefs(),...(JSON.parse(localStorage.getItem(CALENDAR_PREFS_KEY)||"{}")||{})};
+  }catch{
+    return defaultCalendarPrefs();
+  }
+}
+function saveCalendarPrefs(prefs){
+  const clean={...defaultCalendarPrefs(),...(prefs||{})};
+  localStorage.setItem(CALENDAR_PREFS_KEY,JSON.stringify(clean));
+  return clean;
+}
+function hasKnownCalendarGrant(){return localStorage.getItem(CALENDAR_GRANT_KEY)==="1"}
+function hasUsableCalendarToken(){return !!calendarAccessToken && Date.now()<calendarTokenExpiresAt}
+function googleCalendarId(){return localStorage.getItem(CALENDAR_ID_KEY)||""}
+function setGoogleCalendarId(id){
+  if(id)localStorage.setItem(CALENDAR_ID_KEY,id);
+  else localStorage.removeItem(CALENDAR_ID_KEY);
+}
+function calendarTimeZone(){
+  return Intl.DateTimeFormat().resolvedOptions().timeZone||"Europe/Berlin";
+}
+function isoDayOffset(dateStr,days){
+  if(!dateStr)return "";
+  const d=new Date(`${dateStr}T12:00:00`);
+  d.setDate(d.getDate()+days);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+function oneHourAfter(dateStr,timeStr){
+  const [h,m]=String(timeStr||"00:00").split(":").map(Number);
+  const d=new Date(`${dateStr}T${String(h||0).padStart(2,"0")}:${String(m||0).padStart(2,"0")}:00`);
+  d.setMinutes(d.getMinutes()+60);
+  return {
+    date:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`,
+    time:`${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`
+  };
+}
+function calendarRecordKey(type,id){return `${type}:${id}`}
+function calendarRecordExists(type,id){
+  const collection=type==="event"?"events":type==="task"?"tasks":type==="project"?"projects":"";
+  return collection?db[collection].some(r=>r.id===id):false;
+}
+function calendarRecordEligible(type,rec,prefs=calendarPrefs()){
+  if(!rec||rec.deletedAt)return false;
+  if(type==="event")return prefs.syncEvents && !!eventStartDate(rec);
+  if(type==="task")return prefs.syncTasks && !rec.archivedAt && !!rec.due;
+  if(type==="project")return prefs.syncProjects && !rec.archivedAt && !!rec.due;
+  return false;
+}
+function calendarDescriptionLines(type,rec){
+  if(type==="event"){
+    return [
+      "V-Planer Termin",
+      rec.groupId?`Gruppe: ${groupName(rec.groupId)}`:"",
+      rec.location?`Ort: ${rec.location}`:""
+    ].filter(Boolean);
+  }
+  if(type==="task"){
+    return [
+      "V-Planer Aufgabe",
+      `Status: ${statusLabel(rec.status)}`,
+      `Priorität: ${taskPriorityLabel(rec.priority)}`,
+      rec.projectId?`Projekt: ${projectNameAny(rec.projectId)}`:"",
+      rec.groupId?`Gruppe: ${groupName(rec.groupId)}`:"",
+      rec.description||""
+    ].filter(Boolean);
+  }
+  const stats=projectTaskStats(rec.id);
+  return [
+    "V-Planer Projekt",
+    `Status: ${statusLabel(rec.status)}`,
+    `Fortschritt: ${stats.progress}% (${stats.done}/${stats.total} Aufgaben erledigt)`,
+    rec.groupId?`Gruppe: ${groupName(rec.groupId)}`:"",
+    rec.description||""
+  ].filter(Boolean);
+}
+function googleCalendarBody(type,rec){
+  const privateProps={
+    vPlanerApp:"V-Planer",
+    vPlanerRecordType:type,
+    vPlanerRecordId:rec.id,
+    vPlanerUpdatedAt:rec.updatedAt||""
+  };
+  const common={
+    description:calendarDescriptionLines(type,rec).join("\n"),
+    extendedProperties:{private:privateProps}
+  };
+
+  if(type==="event"){
+    const sd=eventStartDate(rec),ed=eventEndDate(rec)||sd,
+          st=eventStartTime(rec),et=eventEndTime(rec),
+          hasTime=!!(st||et);
+    const body={...common,summary:rec.title||"V-Planer Termin",location:rec.location||""};
+
+    if(!hasTime){
+      body.start={date:sd};
+      body.end={date:isoDayOffset(ed,1)};
+      return body;
+    }
+
+    const startTime=st||"00:00";
+    let endDate=ed,endTime=et;
+    if(!endTime){
+      const plus=oneHourAfter(sd,startTime);
+      if(ed===sd){endDate=plus.date;endTime=plus.time}
+      else endTime=startTime;
+    }
+
+    // Defensive guard: Google requires end strictly after start.
+    if(`${endDate}T${endTime}`<=`${sd}T${startTime}`){
+      const plus=oneHourAfter(sd,startTime);
+      endDate=plus.date;endTime=plus.time;
+    }
+
+    const tz=calendarTimeZone();
+    body.start={dateTime:`${sd}T${startTime}:00`,timeZone:tz};
+    body.end={dateTime:`${endDate}T${endTime}:00`,timeZone:tz};
+    return body;
+  }
+
+  if(type==="task"){
+    return {
+      ...common,
+      summary:`✓ ${rec.title||"Aufgabe"}`,
+      start:{date:rec.due},
+      end:{date:isoDayOffset(rec.due,1)}
+    };
+  }
+
+  return {
+    ...common,
+    summary:`◆ ${rec.name||"Projekt"}`,
+    start:{date:rec.due},
+    end:{date:isoDayOffset(rec.due,1)}
+  };
+}
+function initCalendarTokenClient(){
+  if(!CFG.GOOGLE_CLIENT_ID)throw new Error("Bitte zuerst GOOGLE_CLIENT_ID in config.js eintragen.");
+  if(!window.google?.accounts?.oauth2)throw new Error("Google Identity Services noch nicht geladen. Internetverbindung prüfen.");
+  if(!calendarTokenClient){
+    calendarTokenClient=google.accounts.oauth2.initTokenClient({
+      client_id:CFG.GOOGLE_CLIENT_ID,
+      scope:CALENDAR_SCOPE,
+      callback:r=>{
+        if(r.error){
+          const err=new Error(`Google-Kalender-Anmeldung fehlgeschlagen: ${r.error}`);
+          if(calendarTokenWaiter){calendarTokenWaiter.reject(err);calendarTokenWaiter=null}
+          calendarAccessToken="";calendarTokenExpiresAt=0;
+          renderCalendarSyncSettings();
+          return;
+        }
+        calendarAccessToken=r.access_token||"";
+        calendarTokenExpiresAt=Date.now()+Math.max(60,(Number(r.expires_in)||3600)-60)*1000;
+        localStorage.setItem(CALENDAR_GRANT_KEY,"1");
+        if(calendarTokenWaiter){calendarTokenWaiter.resolve(calendarAccessToken);calendarTokenWaiter=null}
+        renderCalendarSyncSettings();
+      },
+      error_callback:e=>{
+        const msg=e?.type==="popup_closed"
+          ?"Google-Kalender-Anmeldung wurde geschlossen."
+          :e?.type==="popup_failed_to_open"
+            ?"Google-Kalender-Anmeldung konnte nicht geöffnet werden. Bitte Pop-ups für diese Seite erlauben."
+            :"Google Kalender konnte nicht verbunden werden.";
+        const err=new Error(msg);
+        if(calendarTokenWaiter){calendarTokenWaiter.reject(err);calendarTokenWaiter=null}
+        renderCalendarSyncSettings();
+      }
+    });
+  }
+  return calendarTokenClient;
+}
+function ensureCalendarAccess(){
+  if(hasUsableCalendarToken())return Promise.resolve(calendarAccessToken);
+  calendarAccessToken="";calendarTokenExpiresAt=0;
+  if(calendarTokenWaiter)return Promise.reject(new Error("Google-Kalender-Verbindung wird bereits hergestellt."));
+  return new Promise((resolve,reject)=>{
+    calendarTokenWaiter={resolve,reject};
+    renderCalendarSyncSettings("Google Kalender wird verbunden …");
+    try{
+      initCalendarTokenClient().requestAccessToken({prompt:""});
+    }catch(e){
+      calendarTokenWaiter=null;
+      reject(e);
+    }
+  });
+}
+async function calendarFetch(url,opt={}){
+  if(!hasUsableCalendarToken()){
+    const err=new Error("Google-Kalender-Zugriff ist abgelaufen. Bitte erneut auf „Verbinden / synchronisieren“ klicken.");
+    err.code="CALENDAR_AUTH_REQUIRED";
+    throw err;
+  }
+  const headers=new Headers(opt.headers||{});
+  headers.set("Authorization",`Bearer ${calendarAccessToken}`);
+  const response=await fetch(url,{...opt,headers});
+  if(response.status===401){
+    calendarAccessToken="";calendarTokenExpiresAt=0;
+    renderCalendarSyncSettings();
+    const err=new Error("Google-Kalender-Zugriff ist abgelaufen. Bitte erneut verbinden.");
+    err.code="CALENDAR_AUTH_REQUIRED";
+    throw err;
+  }
+  if(!response.ok){
+    const text=(await response.text()).slice(0,500);
+    if(response.status===403){
+      throw new Error("Google Calendar API verweigert den Zugriff. Bitte prüfen, ob die Google Calendar API im verwendeten Google-Cloud-Projekt aktiviert und der Kalender-Scope zugelassen ist.");
+    }
+    const err=new Error(`Google-Kalender-Fehler ${response.status}: ${text}`);
+    err.status=response.status;
+    throw err;
+  }
+  return response;
+}
+async function validateGoogleCalendar(calendarId){
+  if(!calendarId)return false;
+  try{
+    await calendarFetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}`);
+    return true;
+  }catch(e){
+    if(e.status===404)return false;
+    throw e;
+  }
+}
+async function ensureVPlanerGoogleCalendar(){
+  let id=googleCalendarId();
+  if(id){
+    const valid=await validateGoogleCalendar(id).catch(e=>{
+      if(e.status===404)return false;
+      throw e;
+    });
+    if(valid)return id;
+    setGoogleCalendarId("");
+    id="";
+  }
+
+  const prefs=calendarPrefs();
+  const created=await (await calendarFetch("https://www.googleapis.com/calendar/v3/calendars",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      summary:prefs.calendarName||"V-Planer",
+      description:"V-Planer – Dein Verein. Einfach organisiert.",
+      timeZone:calendarTimeZone()
+    })
+  })).json();
+
+  if(!created.id)throw new Error("Google Kalender wurde erstellt, aber es wurde keine Kalender-ID zurückgegeben.");
+  setGoogleCalendarId(created.id);
+  return created.id;
+}
+async function listVPlanerGoogleEvents(calendarId){
+  const result=[];
+  let pageToken="";
+  do{
+    const params=new URLSearchParams({
+      maxResults:"2500",
+      singleEvents:"true",
+      showDeleted:"false",
+      privateExtendedProperty:"vPlanerApp=V-Planer"
+    });
+    if(pageToken)params.set("pageToken",pageToken);
+    const data=await (await calendarFetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params}`)).json();
+    result.push(...(data.items||[]));
+    pageToken=data.nextPageToken||"";
+  }while(pageToken);
+  return result;
+}
+function remoteVPlanerEventMap(items){
+  const map=new Map();
+  (items||[]).forEach(item=>{
+    const p=item.extendedProperties?.private||{};
+    if(p.vPlanerRecordType&&p.vPlanerRecordId){
+      map.set(calendarRecordKey(p.vPlanerRecordType,p.vPlanerRecordId),item);
+    }
+  });
+  return map;
+}
+async function deleteGoogleCalendarEvent(calendarId,eventId){
+  try{
+    await calendarFetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,{method:"DELETE"});
+  }catch(e){
+    if(e.status!==404&&e.status!==410)throw e;
+  }
+}
+async function upsertGoogleCalendarEvent(calendarId,type,rec,remote){
+  const body=googleCalendarBody(type,rec);
+  const remoteVersion=remote?.extendedProperties?.private?.vPlanerUpdatedAt||"";
+  if(remote&&remoteVersion===(rec.updatedAt||""))return {action:"unchanged",event:remote};
+
+  if(remote?.id){
+    try{
+      const updated=await (await calendarFetch(
+        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(remote.id)}`,
+        {method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}
+      )).json();
+      return {action:"updated",event:updated};
+    }catch(e){
+      if(e.status!==404&&e.status!==410)throw e;
+    }
+  }
+
+  const created=await (await calendarFetch(
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`,
+    {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}
+  )).json();
+  return {action:"created",event:created};
+}
+async function syncGoogleCalendar({interactive=false}={}){
+  const prefs=calendarPrefs();
+  if(!prefs.enabled){
+    if(interactive)alert("Bitte zuerst in den Einstellungen „Kalendersynchronisierung aktiv“ einschalten.");
+    return;
+  }
+  if(calendarSyncRunning)return;
+  calendarSyncRunning=true;
+  renderCalendarSyncSettings("Synchronisiere mit Google Kalender …");
+
+  try{
+    if(!hasUsableCalendarToken()){
+      if(!interactive)return;
+      await ensureCalendarAccess();
+    }
+
+    const calendarId=await ensureVPlanerGoogleCalendar();
+    const remoteItems=await listVPlanerGoogleEvents(calendarId);
+    const remote=remoteVPlanerEventMap(remoteItems);
+    const localKeys=new Set();
+    let created=0,updated=0,deleted=0,unchanged=0;
+
+    const sets=[
+      ["event",db.events],
+      ["task",db.tasks],
+      ["project",db.projects]
+    ];
+
+    for(const [type,records] of sets){
+      for(const rec of records){
+        const key=calendarRecordKey(type,rec.id);
+        localKeys.add(key);
+        const remoteEvent=remote.get(key);
+        const eligible=calendarRecordEligible(type,rec,prefs);
+
+        if(!eligible){
+          if(remoteEvent?.id){
+            await deleteGoogleCalendarEvent(calendarId,remoteEvent.id);
+            deleted++;
+          }
+          continue;
+        }
+
+        const result=await upsertGoogleCalendarEvent(calendarId,type,rec,remoteEvent);
+        if(result.action==="created")created++;
+        else if(result.action==="updated")updated++;
+        else unchanged++;
+      }
+    }
+
+    // Remove app-created remote entries whose V-Planer record no longer exists.
+    for(const [key,item] of remote.entries()){
+      if(!localKeys.has(key)&&item?.id){
+        await deleteGoogleCalendarEvent(calendarId,item.id);
+        deleted++;
+      }
+    }
+
+    localStorage.setItem("v-planer-calendar-last-sync-v1",now());
+    renderCalendarSyncSettings(`Synchronisiert: ${created} neu · ${updated} aktualisiert · ${deleted} entfernt`);
+  }finally{
+    calendarSyncRunning=false;
+  }
+}
+function scheduleCalendarAutoSync(){
+  clearTimeout(calendarSyncTimer);
+  calendarSyncTimer=setTimeout(()=>{
+    if(hasUsableCalendarToken()&&calendarPrefs().enabled){
+      syncGoogleCalendar({interactive:false}).catch(e=>console.warn("Google-Kalender-Sync:",e));
+    }
+  },1600);
+}
+function renderCalendarSyncSettings(statusOverride=""){
+  const card=$("#calendarSyncCard");
+  if(!card)return;
+
+  const prefs=calendarPrefs(),
+        known=hasKnownCalendarGrant(),
+        connected=hasUsableCalendarToken(),
+        calendarId=googleCalendarId(),
+        last=localStorage.getItem("v-planer-calendar-last-sync-v1")||"";
+
+  $("#calendarSyncEnabled").checked=!!prefs.enabled;
+  $("#calendarSyncEvents").checked=!!prefs.syncEvents;
+  $("#calendarSyncTasks").checked=!!prefs.syncTasks;
+  $("#calendarSyncProjects").checked=!!prefs.syncProjects;
+  $("#calendarName").value=prefs.calendarName||"V-Planer";
+
+  const state=$("#calendarConnectionState");
+  if(state){
+    state.textContent=statusOverride||
+      (connected?"Google Kalender verbunden":
+       known?"Google Kalender bereit – erneut verbinden/synchronisieren":
+       "Google Kalender noch nicht verbunden");
+    state.className=`calendar-sync-state ${connected?"connected":known?"ready":""}`;
+  }
+
+  const meta=$("#calendarSyncMeta");
+  if(meta){
+    meta.textContent=[
+      calendarId?`Kalender angelegt`:"Kalender wird beim ersten Sync automatisch angelegt",
+      last?`Letzter Sync: ${new Date(last).toLocaleString("de-DE")}`:"Noch nicht synchronisiert"
+    ].join(" · ");
+  }
+
+  const btn=$("#connectCalendarBtn");
+  if(btn)btn.textContent=connected?"Jetzt synchronisieren":known?"Erneut verbinden & synchronisieren":"Google Kalender verbinden";
+}
+function saveCalendarPrefsFromForm(){
+  const prefs=saveCalendarPrefs({
+    enabled:$("#calendarSyncEnabled").checked,
+    syncEvents:$("#calendarSyncEvents").checked,
+    syncTasks:$("#calendarSyncTasks").checked,
+    syncProjects:$("#calendarSyncProjects").checked,
+    calendarName:$("#calendarName").value.trim()||"V-Planer"
+  });
+  renderCalendarSyncSettings();
+  if(hasUsableCalendarToken()&&prefs.enabled)scheduleCalendarAutoSync();
+}
+async function connectAndSyncCalendar(){
+  saveCalendarPrefsFromForm();
+  const prefs=calendarPrefs();
+  if(!prefs.enabled){
+    $("#calendarSyncEnabled").checked=true;
+    saveCalendarPrefsFromForm();
+  }
+  await ensureCalendarAccess();
+  await syncGoogleCalendar({interactive:true});
+}
+function disconnectGoogleCalendar(){
+  if(calendarAccessToken&&window.google?.accounts?.oauth2?.revoke){
+    try{google.accounts.oauth2.revoke(calendarAccessToken,()=>{})}catch{}
+  }
+  calendarAccessToken="";calendarTokenExpiresAt=0;calendarTokenClient=null;
+  localStorage.removeItem(CALENDAR_GRANT_KEY);
+  const prefs=calendarPrefs();
+  prefs.enabled=false;
+  saveCalendarPrefs(prefs);
+  renderCalendarSyncSettings("Google-Kalender-Verbindung getrennt. Bereits synchronisierte Einträge bleiben im Kalender.");
+}
+
 
 function persistFinanceBridgeState(){
   db.updatedAt=now();
@@ -654,6 +1114,7 @@ function renderArchive(){
   });
 }
 
+function taskPriorityLabel(priority){return ({high:"Hoch",mid:"Mittel",low:"Niedrig"})[priority]||priority||"—"}
 function taskPriorityRank(priority){
   return ({high:3,mid:2,low:1})[priority]||0;
 }
@@ -1560,6 +2021,7 @@ function renderSettings(){
   $("#storageLimit").value=s.storageLimitGB||5;
   $("#compressImages").checked=!!s.compressImages;
   renderGroupTypeSettings();
+  renderCalendarSyncSettings();
 }
 ["infoDays","warningDays","alarmDays"].forEach(id=>$("#"+id).addEventListener("input",()=>$("#"+id+"Label").textContent=$("#"+id).value));
 $("#uiScale").addEventListener("input",()=>{
@@ -1604,6 +2066,21 @@ $("#saveSettingsBtn").onclick=()=>{
   applyModuleVisibility();
   alert("Einstellungen gespeichert.");
 };
+
+
+["calendarSyncEnabled","calendarSyncEvents","calendarSyncTasks","calendarSyncProjects"].forEach(id=>{
+  $("#"+id)?.addEventListener("change",saveCalendarPrefsFromForm);
+});
+$("#calendarName")?.addEventListener("change",saveCalendarPrefsFromForm);
+$("#connectCalendarBtn")?.addEventListener("click",()=>connectAndSyncCalendar().catch(e=>{
+  renderCalendarSyncSettings();
+  alert(e.message);
+}));
+$("#disconnectCalendarBtn")?.addEventListener("click",()=>{
+  if(confirm("Google-Kalender-Verbindung auf diesem Gerät trennen?\n\nBereits in Google Kalender angelegte V-Planer-Einträge bleiben dort bestehen.")){
+    disconnectGoogleCalendar();
+  }
+});
 
 $("#exportBackupBtn").onclick=()=>exportFullBackup();
 

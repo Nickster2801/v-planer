@@ -650,3 +650,22 @@ input,select,textarea{font-size:16px}
   .cal-day-number{min-width:19px;height:19px;font-size:9px}
   .cal-chip{font-size:8px;padding:2px 4px}
 }
+
+
+/* V-Planer 1.0 – Google-Kalender-Synchronisierung */
+.calendar-sync-card{position:relative}
+.calendar-sync-state{display:inline-flex;align-items:center;gap:7px;padding:7px 10px;border-radius:999px;background:#f2f4f7;color:#667085;font-size:11px;font-weight:800;margin:3px 0 5px}
+.calendar-sync-state:before{content:"";width:8px;height:8px;border-radius:50%;background:#98a2b3}
+.calendar-sync-state.ready{background:#fff7e8;color:#9a6700}
+.calendar-sync-state.ready:before{background:#e6a700}
+.calendar-sync-state.connected{background:#effaea;color:#2f7d25}
+.calendar-sync-state.connected:before{background:#46ad2a}
+.calendar-sync-meta{font-size:10px;color:var(--muted);margin-bottom:7px;line-height:1.4}
+.calendar-sync-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.calendar-sync-note{display:flex;flex-direction:column;gap:4px;margin-top:12px;padding:10px 11px;border-radius:10px;border:1px solid #cfe1f2;background:#f6fbff;color:#365b7c}
+.calendar-sync-note b{font-size:11px}
+.calendar-sync-note span{font-size:10px;line-height:1.45}
+@media(max-width:600px){
+  .calendar-sync-actions{display:grid;grid-template-columns:1fr}
+  .calendar-sync-actions .btn{width:100%}
+}

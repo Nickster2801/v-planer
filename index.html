@@ -434,6 +434,43 @@
             <div class="switch-row"><div><b>Jubiläen erinnern</b><small>Eintrittsjubiläen auf der Übersicht</small></div><label class="switch"><input id="jubileeReminder" type="checkbox"><span></span></label></div>
           </div>
 
+          <div class="card setting-card calendar-sync-card" id="calendarSyncCard">
+            <h2>Google Kalender</h2>
+            <p class="setting-help">Einseitige Synchronisierung von V-Planer in einen eigenen Google-Kalender „V-Planer“. Die Einträge erscheinen anschließend automatisch auf Geräten, auf denen dein Google Kalender eingerichtet ist.</p>
+
+            <div id="calendarConnectionState" class="calendar-sync-state">Google Kalender noch nicht verbunden</div>
+            <div id="calendarSyncMeta" class="calendar-sync-meta">Noch nicht synchronisiert</div>
+
+            <div class="switch-row">
+              <div><b>Kalendersynchronisierung aktiv</b><small>Änderungen bei bestehender Verbindung automatisch übertragen</small></div>
+              <label class="switch"><input id="calendarSyncEnabled" type="checkbox"><span></span></label>
+            </div>
+            <div class="switch-row">
+              <div><b>Termine synchronisieren</b><small>Mit Von-/Bis-Datum und Uhrzeiten</small></div>
+              <label class="switch"><input id="calendarSyncEvents" type="checkbox"><span></span></label>
+            </div>
+            <div class="switch-row">
+              <div><b>Aufgaben synchronisieren</b><small>Als ganztägiger Eintrag am Fälligkeitsdatum</small></div>
+              <label class="switch"><input id="calendarSyncTasks" type="checkbox"><span></span></label>
+            </div>
+            <div class="switch-row">
+              <div><b>Projekte synchronisieren</b><small>Als ganztägiger Eintrag am Projekt-Zieldatum</small></div>
+              <label class="switch"><input id="calendarSyncProjects" type="checkbox"><span></span></label>
+            </div>
+
+            <label>Kalendername<input id="calendarName" value="V-Planer"></label>
+
+            <div class="calendar-sync-actions">
+              <button class="btn primary" id="connectCalendarBtn" type="button">Google Kalender verbinden</button>
+              <button class="btn secondary" id="disconnectCalendarBtn" type="button">Verbindung trennen</button>
+            </div>
+
+            <div class="calendar-sync-note">
+              <b>Einmalige Google-Cloud-Einrichtung</b>
+              <span>Im selben Google-Cloud-Projekt wie für Drive muss zusätzlich die <strong>Google Calendar API</strong> aktiviert sein. V-Planer fordert nur die Berechtigung an, einen von V-Planer erstellten Kalender und dessen Einträge zu verwalten.</span>
+            </div>
+          </div>
+
           <div class="card setting-card backup-setting-card">
             <h2>Backup & Wiederherstellung</h2>
             <p class="setting-help">Sichere den kompletten strukturierten V-Planer-Datenbestand als JSON-Datei oder stelle ihn später wieder her.</p>
