@@ -669,3 +669,247 @@ input,select,textarea{font-size:16px}
   .calendar-sync-actions{display:grid;grid-template-columns:1fr}
   .calendar-sync-actions .btn{width:100%}
 }
+
+
+/* V-Planer 1.0.1: kompletter Ordner-Upload */
+.folder-upload-input{position:absolute!important;width:1px!important;height:1px!important;opacity:0!important;pointer-events:none!important}
+.folder-upload-status{flex-basis:100%;min-height:18px;font-size:12px;color:var(--muted);line-height:1.45}
+.folder-upload-status.is-working{color:var(--blue-dark);font-weight:700}
+.folder-upload-status.is-ok{color:#15803d;font-weight:700}
+.folder-upload-status.is-error{color:#b42318;font-weight:700}
+@media(max-width:720px){.upload-zone>.btn{width:100%}.upload-zone>input[type=file]:not(.folder-upload-input),.upload-zone>select{width:100%;max-width:none}}
+
+/* V-Planer 1.0.3 - Vereinsjahr: alle datumsbezogenen Eintraege */
+.year-overview-head{padding:14px;margin-bottom:13px}
+.year-overview-head .calendar-head{margin-bottom:10px}
+.year-overview-head .calendar-title-group{text-align:center}
+.year-overview-head .calendar-title-group h2{margin:0;font-size:19px;color:var(--blue-dark)}
+.year-legend{margin:6px 0 8px;flex-wrap:wrap}
+.jubilee-dot{background:var(--orange)}
+.year-month-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:9px}
+.month-card .year-month-head h3{margin:0;text-transform:capitalize}
+.year-month-count{min-width:25px;height:25px;border-radius:999px;display:grid;place-items:center;padding:0 7px;background:#f2f4f7;color:#475467;font-size:11px;font-weight:800}
+.year-special-button{width:100%;border:0;border-left:3px solid var(--year-accent,#98a2b3);background:var(--year-soft,#f8fafc);border-radius:8px;padding:7px 8px;display:grid;grid-template-columns:22px auto minmax(0,1fr);gap:4px 8px;align-items:center;text-align:left;cursor:pointer;color:#344054;margin:5px 0}
+.year-special-button:hover{box-shadow:inset 0 0 0 1px var(--year-accent,#98a2b3)}
+.year-special-button b{font-size:10px;white-space:nowrap}
+.year-special-button>span:not(.year-type-icon){overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:650}
+.year-special-button small{grid-column:3;color:var(--muted);font-size:9px}
+.year-type-icon{grid-row:1/3;display:grid;place-items:center;width:22px;height:22px;border-radius:7px;background:#fff;border:1px solid rgba(15,23,42,.07);font-size:12px}
+.year-task-button{--year-accent:var(--teal);--year-soft:#ecfdf8}
+.year-project-button{--year-accent:var(--blue);--year-soft:var(--blue-soft)}
+.year-birthday-button{--year-accent:var(--purple);--year-soft:#f5f3ff}
+.year-jubilee-button{--year-accent:var(--orange);--year-soft:#fff7ed}
+@media(max-width:780px){
+  .year-overview-head{padding:11px}
+  .year-special-button{grid-template-columns:22px minmax(0,1fr)}
+  .year-special-button b{grid-column:2}
+  .year-special-button>span:not(.year-type-icon),.year-special-button small{grid-column:2}
+}
+
+
+/* Strafen 1.0.4 */
+.fine-open-notice{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:10px 0 12px;padding:11px 13px;border:1px solid #f1b5b5;background:#fff7f7;border-radius:11px;color:#8f1d1d;font-size:12px}
+.fine-open-notice strong{font-size:13px}.fine-open-notice span{font-weight:700}
+.fine-row-open>td{background:#fffafa}.fine-row-open:hover>td{background:#fff4f4}
+.fine-member-select-row{display:grid;grid-template-columns:minmax(0,1fr) 46px;gap:8px;align-items:end}
+.fine-member-select-row select{min-width:0}.fine-member-search-btn{height:42px;padding:0;display:grid;place-items:center;font-size:16px;margin-top:4px}
+.fine-member-search-panel{border:1px solid var(--line);border-radius:11px;padding:10px;background:#f8fafc}
+.search-with-icon{display:grid;grid-template-columns:24px minmax(0,1fr);align-items:center;border:1px solid var(--line);border-radius:9px;background:#fff;padding-left:9px}
+.search-with-icon input{border:0!important;margin:0!important;outline:0;box-shadow:none!important}.search-with-icon span{font-size:14px}
+.fine-member-results{margin-top:8px;max-height:240px;overflow:auto;display:grid;gap:5px}
+.fine-member-result{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;border:1px solid var(--line);background:#fff;border-radius:9px;padding:9px 10px;text-align:left;cursor:pointer;color:inherit}
+.fine-member-result:hover{border-color:#b7c7e6;background:#f4f7ff}.fine-member-result span:first-child{display:grid;gap:2px}.fine-member-result small{color:var(--muted)}.fine-member-result span:last-child{font-size:11px;font-weight:800;color:var(--blue-dark)}
+.empty.compact{padding:16px 8px}
+.fine-catalog-editor{display:grid;gap:10px}.fine-catalog-head,.fine-catalog-row{display:grid;grid-template-columns:minmax(0,1fr) 150px 38px;gap:8px;align-items:center}
+.fine-catalog-head{padding:0 2px;font-size:11px;color:var(--muted)}.fine-catalog-list{display:grid;gap:7px;max-height:45vh;overflow:auto;padding-right:2px}
+.fine-catalog-row input{width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;min-width:0}.icon-action{height:38px;width:38px;border:1px solid var(--line);border-radius:9px;background:#fff;cursor:pointer;font-size:20px}
+@media(max-width:780px){.fine-open-notice{align-items:flex-start;flex-direction:column;gap:3px}.fine-catalog-head{display:none}.fine-catalog-row{grid-template-columns:minmax(0,1fr) 110px 38px}.fine-member-search-panel{grid-column:auto}}
+@media(max-width:480px){.fine-catalog-row{grid-template-columns:minmax(0,1fr) 38px}.fine-catalog-amount{grid-column:1}.fine-catalog-row .icon-action{grid-column:2;grid-row:1/3}}
+
+
+/* V-Planer 1.0.4 – Strafkatalog */
+.fine-catalog-open-btn{white-space:nowrap}
+.fine-catalog-overview{display:grid;gap:12px}
+.fine-catalog-summary{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:12px;border:1px solid var(--line);border-radius:12px;background:#f8fafc
+}
+.fine-catalog-summary>div{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fine-catalog-summary b{font-size:14px;color:#344054}
+.fine-catalog-summary span{font-size:10px;color:var(--muted);line-height:1.4}
+.fine-catalog-overview-list{display:grid;gap:8px;max-height:55vh;overflow-y:auto;padding-right:2px}
+.fine-catalog-card{
+  display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;
+  border:1px solid var(--line);border-radius:12px;background:#fff;padding:11px 12px
+}
+.fine-catalog-card-main{min-width:0}
+.fine-catalog-card-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.fine-catalog-card-head b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#344054}
+.fine-catalog-card-head strong{white-space:nowrap;color:var(--blue-dark);font-size:14px}
+.fine-catalog-card small{display:block;margin-top:5px;color:#667085;font-size:9px;font-weight:700}
+.fine-catalog-card-actions{display:flex;gap:7px}
+
+@media(max-width:700px){
+  .fine-catalog-summary{align-items:stretch;flex-direction:column}
+  .fine-catalog-summary .btn{width:100%}
+  .fine-catalog-overview-list{max-height:none}
+  .fine-catalog-card{grid-template-columns:1fr}
+  .fine-catalog-card-actions{display:grid;grid-template-columns:1fr 1fr}
+  .fine-catalog-card-actions .btn{width:100%;min-height:42px}
+}
+@media(max-width:420px){
+  .fine-catalog-card-actions{grid-template-columns:1fr}
+}
+
+
+/* V-Planer 1.0.4 – chronologische Geburtstage & Jubiläen */
+.personal-event-row{
+  width:100%;
+  border:0;
+  background:transparent;
+  text-align:left;
+  color:inherit;
+  cursor:pointer;
+}
+.personal-event-row:hover{background:#f8fbff}
+.personal-event-copy{min-width:0;flex:1}
+.personal-event-type{
+  flex:none;
+  border-radius:999px;
+  padding:4px 7px;
+  font-size:9px;
+  font-weight:800;
+  background:#f2f4f7;
+  color:#667085;
+}
+.personal-event-type.birthday{background:#f6efff;color:#7a4ca5}
+.personal-event-type.jubilee{background:#eef8ea;color:#3c7c2e}
+.setting-help-inline{
+  display:block;
+  margin-top:5px;
+  color:var(--muted);
+  font-size:10px;
+  line-height:1.4;
+}
+@media(max-width:600px){
+  .personal-event-row{align-items:flex-start}
+  .personal-event-type{margin-left:auto}
+}
+
+
+/* V-Planer 1.0.4 – nächster Geburtstag auf der Übersicht */
+.next-birthday-metric b{
+  font-size:19px;
+  line-height:1.15;
+}
+.next-birthday-metric small{
+  display:block;
+  margin-top:5px;
+  line-height:1.35;
+}
+.next-birthday-metric.is-clickable{
+  cursor:pointer;
+  transition:transform .12s ease,box-shadow .12s ease,border-color .12s ease;
+}
+.next-birthday-metric.is-clickable:hover{
+  transform:translateY(-1px);
+  border-color:#b8d5ec;
+  box-shadow:0 7px 18px rgba(18,53,86,.08);
+}
+.next-birthday-metric.is-clickable:focus-visible{
+  outline:2px solid var(--blue);
+  outline-offset:2px;
+}
+
+
+/* V-Planer 1.0.4 – Kanban nach Fälligkeit */
+.kanban-ticket{
+  display:grid;
+  gap:8px;
+}
+.kanban-ticket-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:8px;
+}
+.kanban-ticket-head strong{
+  min-width:0;
+  line-height:1.35;
+}
+.kanban-project-line{
+  color:var(--muted);
+}
+.kanban-ticket-footer{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  padding-top:7px;
+  border-top:1px solid var(--line);
+}
+.kanban-ticket-footer time{
+  color:var(--muted);
+  font-size:9px;
+  white-space:nowrap;
+}
+.kanban-due{
+  display:inline-flex;
+  align-items:center;
+  min-height:24px;
+  padding:3px 7px;
+  border-radius:999px;
+  font-size:10px;
+  font-weight:850;
+  white-space:nowrap;
+}
+.kanban-due.overdue{background:#fff0ee;color:#b42318}
+.kanban-due.today{background:#fff1e8;color:#b54708}
+.kanban-due.tomorrow{background:#fff7e8;color:#b26a00}
+.kanban-due.soon{background:#eef5ff;color:#175cd3}
+.kanban-due.later{background:#eef8ea;color:#267326}
+.kanban-due.no-date{background:#f2f4f7;color:#667085}
+
+@media(max-width:760px){
+  .kanban-ticket-footer{
+    align-items:flex-start;
+    flex-direction:column;
+    gap:4px;
+  }
+  .kanban-due{
+    min-height:28px;
+  }
+}
+
+
+/* V-Planer 1.0.4 – Projekt ↔ Termin */
+.project-linked-event{
+  display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;
+  margin:12px 0;padding:10px 11px;border:1px dashed #cfd8e3;border-radius:12px;background:#fafcff
+}
+.project-linked-event.has-event{border-style:solid;border-color:#b9d8f3;background:#f5fbff}
+.project-linked-event-icon{
+  width:28px;height:28px;border-radius:50%;display:grid;place-items:center;
+  background:#eef5ff;color:var(--blue-dark);font-weight:900
+}
+.project-linked-event-copy{display:grid;gap:3px;min-width:0}
+.project-linked-event-copy b{font-size:11px;color:#344054}
+.project-linked-event-copy span{font-size:10px;color:var(--muted);line-height:1.4}
+.project-linked-event-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.event-project-link{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:11px 12px;margin:10px 0;border:1px solid #b9d8f3;border-radius:12px;background:#f5fbff
+}
+.event-project-link>div{display:grid;gap:3px;min-width:0}
+.event-project-link b{font-size:11px;color:#344054}
+.event-project-link span{font-size:10px;color:var(--muted)}
+@media(max-width:700px){
+  .project-linked-event{grid-template-columns:auto 1fr}
+  .project-linked-event-actions{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr}
+  .project-linked-event-actions .btn{width:100%;min-height:42px}
+  .event-project-link{align-items:stretch;flex-direction:column}
+  .event-project-link .btn{width:100%}
+}
+@media(max-width:420px){
+  .project-linked-event-actions{grid-template-columns:1fr}
+}

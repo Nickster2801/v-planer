@@ -59,7 +59,7 @@
     </nav>
 
     <div class="sidebar-footer">
-      <small>V-Planer Cloud · 1.0</small>
+      <small>V-Planer Cloud · 1.0.4</small>
     </div>
   </aside>
 
@@ -90,7 +90,7 @@
           <div class="card metric"><span>Offene Aufgaben</span><b id="metricOpenTasks">0</b><small id="metricTaskHint">Heute 0 · Woche 0</small></div>
           <div class="card metric"><span>Aktive Projekte</span><b id="metricProjects">0</b><small id="metricProjectHint">0 mit Termin</small></div>
           <div class="card metric"><span>Mitglieder</span><b id="metricMembers">0</b><small id="metricMemberHint">0 aktiv</small></div>
-          <div class="card metric"><span>Geburtstage</span><b id="metricBirthdays">0</b><small>heute / diese Woche</small></div>
+          <div class="card metric next-birthday-metric"><span>Nächster Geburtstag</span><b id="metricBirthdays">—</b><small id="metricBirthdayHint">Noch kein Geburtstag hinterlegt</small></div>
         </div>
 
         <div class="dash-grid two">
@@ -183,7 +183,27 @@
         </div>
       </section>
 
-      <section class="view" id="view-year"><div class="year-grid" id="yearGrid"></div></section>
+      <section class="view" id="view-year">
+        <div class="card year-overview-head">
+          <div class="calendar-head">
+            <button id="prevYear" class="calendar-nav-btn" type="button" aria-label="Vorheriges Jahr">‹</button>
+            <div class="calendar-title-group">
+              <h2 id="yearTitle"></h2>
+              <button id="todayYear" class="calendar-today-btn" type="button">Aktuelles Jahr</button>
+            </div>
+            <button id="nextYear" class="calendar-nav-btn" type="button" aria-label="Nächstes Jahr">›</button>
+          </div>
+          <div class="calendar-legend year-legend" aria-label="Legende Vereinsjahr">
+            <span><i class="legend-dot event-dot"></i>Termin</span>
+            <span><i class="legend-dot task-dot"></i>Aufgabe</span>
+            <span><i class="legend-dot project-dot"></i>Projekt</span>
+            <span><i class="legend-dot birthday-dot"></i>Geburtstag</span>
+            <span><i class="legend-dot jubilee-dot"></i>Vereinsjubiläum</span>
+          </div>
+          <small class="muted">Alle datumsbezogenen Einträge des gewählten Jahres werden angezeigt. Ein Klick öffnet den zugehörigen Datensatz.</small>
+        </div>
+        <div class="year-grid" id="yearGrid"></div>
+      </section>
 
       <section class="view" id="view-archive">
         <div class="archive-summary">
@@ -235,8 +255,10 @@
             </select>
             <button class="btn secondary" id="fineSortDir" type="button">↓ Absteigend</button>
           </div>
+          <button class="btn secondary fine-catalog-open-btn" id="fineCatalogBtn" type="button">📋 Strafkatalog</button>
           <button class="btn primary" id="newFineBtn" type="button">+ Strafe</button>
         </div>
+        <div id="fineOpenNotice" class="fine-open-notice" hidden></div>
         <div class="card table-card"><div class="table-wrap"><table class="table fine-table">
           <thead><tr>
             <th aria-sort="descending"><button class="table-sort active" type="button" data-fine-sort="date">Datum <span class="sort-arrow">↓</span></button></th>
@@ -254,6 +276,7 @@
         <div class="toolbar">
           <input class="search" id="memberSearch" placeholder="Mitglieder suchen …">
           <select id="memberStatusFilter"><option value="">Alle Status</option><option value="active">Aktiv</option><option value="inactive">Deaktiviert</option><option value="passive">Passiv</option><option value="deceased">Verstorben</option></select>
+          <select id="memberHonoraryFilter" aria-label="Ehrenmitglieder filtern"><option value="">Alle Mitglieder</option><option value="yes">Nur Ehrenmitglieder</option><option value="no">Ohne Ehrenmitglieder</option></select>
           <div class="member-sort-mobile">
             <select id="memberSortSelect" aria-label="Mitglieder sortieren">
               <option value="number">Nummer</option>
@@ -310,8 +333,11 @@
               </div>
             </div>
             <div class="card upload-card"><div class="upload-zone">
-              <div><h3>Datei ablegen</h3><p>Word, PDF, Excel, Bilder und weitere Dateien im aktuellen Ordner.</p></div>
+              <div><h3>Datei ablegen</h3><p>Word, PDF, Excel, Bilder und weitere Dateien im aktuellen Ordner. Ganze Ordner können inklusive Unterordnern übernommen werden.</p></div>
               <input id="meetingFileInput" type="file" multiple>
+              <input id="meetingFolderInput" class="folder-upload-input" type="file" webkitdirectory directory multiple>
+              <button class="btn secondary" id="meetingFolderUploadBtn" type="button">Ordner hochladen</button>
+              <div class="folder-upload-status" id="meetingFolderUploadStatus" aria-live="polite"></div>
               <button class="btn primary" id="meetingUploadBtn" type="button">In Drive hochladen</button>
             </div></div>
             <div class="browser-section-title"><h2>Sitzungen & Beschlüsse</h2><span id="meetingFolderCount" class="mini-meta"></span></div>
@@ -339,8 +365,11 @@
             </div>
             <div class="doc-categories" id="docCategories"></div>
             <div class="card upload-card"><div class="upload-zone">
-              <div><h3>Datei hochladen</h3><p>Word, PDF, Excel, Präsentationen, Bilder und weitere Dateien.</p></div>
+              <div><h3>Datei hochladen</h3><p>Word, PDF, Excel, Präsentationen, Bilder und weitere Dateien. Ganze Ordner werden mit ihrer Unterordnerstruktur in V-Planer und Google Drive angelegt.</p></div>
               <input id="fileInput" type="file" multiple>
+              <input id="documentFolderInput" class="folder-upload-input" type="file" webkitdirectory directory multiple>
+              <button class="btn secondary" id="documentFolderUploadBtn" type="button">Ordner hochladen</button>
+              <div class="folder-upload-status" id="documentFolderUploadStatus" aria-live="polite"></div>
               <select id="docCategory"><option>Quittungen</option><option>Protokolle</option><option>Dokumente</option><option>Bilder</option></select>
               <button class="btn primary" id="uploadBtn" type="button">In Drive hochladen</button>
             </div></div>
@@ -369,8 +398,11 @@
               </div>
             </div>
             <div class="card upload-card"><div class="upload-zone">
-              <div><h3>Datei zum Vereinswissen ablegen</h3><p>Zum Beispiel Anleitungen, Word-Dateien, PDFs oder Vorlagen.</p></div>
+              <div><h3>Datei zum Vereinswissen ablegen</h3><p>Zum Beispiel Anleitungen, Word-Dateien, PDFs oder Vorlagen. Ganze Ordner können inklusive Unterordnern hochgeladen werden.</p></div>
               <input id="knowledgeFileInput" type="file" multiple>
+              <input id="knowledgeFolderInput" class="folder-upload-input" type="file" webkitdirectory directory multiple>
+              <button class="btn secondary" id="knowledgeFolderUploadBtn" type="button">Ordner hochladen</button>
+              <div class="folder-upload-status" id="knowledgeFolderUploadStatus" aria-live="polite"></div>
               <button class="btn primary" id="knowledgeUploadBtn" type="button">In Drive hochladen</button>
             </div></div>
             <div class="browser-section-title"><h2>Wissenseinträge</h2><span id="knowledgeFolderCount" class="mini-meta"></span></div>
@@ -394,6 +426,12 @@
             <h2>Vereinsdaten</h2>
             <label>Vereinsname<input id="clubName"></label>
             <label>Eigene Rolle<input id="userRole" placeholder="z. B. Vorsitzender"></label>
+          </div>
+
+          <div class="card setting-card" data-module="club">
+            <h2>Ehrenmitglieder</h2>
+            <p class="setting-help">Lege fest, wie die Kennzeichnung „Ehrenmitglied“ im Mitgliederbereich verwendet wird.</p>
+            <div class="switch-row"><div><b>Ehrenmitglieder automatisch beitragsfrei</b><small>Markiert Ehrenmitglieder im V-Planer als beitragsfrei. Es werden dadurch keine automatischen Bank- oder Kassenbuchungen erzeugt.</small></div><label class="switch"><input id="honoraryContributionFree" type="checkbox"><span></span></label></div>
           </div>
 
           <div class="card setting-card">
@@ -431,18 +469,22 @@
             <label>Warnung ab <b id="warningDaysLabel">7</b> Tagen vorher<input id="warningDays" type="range" min="1" max="30"></label>
             <label>Alarm ab <b id="alarmDaysLabel">2</b> Tagen vorher<input id="alarmDays" type="range" min="0" max="14"></label>
             <div class="switch-row"><div><b>Geburtstage in dieser Woche</b><small>Hinweis auf der Übersicht</small></div><label class="switch"><input id="birthdayWeekReminder" type="checkbox"><span></span></label></div>
-            <div class="switch-row"><div><b>Jubiläen erinnern</b><small>Eintrittsjubiläen auf der Übersicht</small></div><label class="switch"><input id="jubileeReminder" type="checkbox"><span></span></label></div>
+            <div class="switch-row"><div><b>Jubiläen erinnern</b><small>Wichtige Eintrittsjubiläen auf der Übersicht anzeigen</small></div><label class="switch"><input id="jubileeReminder" type="checkbox"><span></span></label></div>
+            <label>Wichtige Jubiläumsjahre
+              <input id="jubileeYearsInput" type="text" inputmode="numeric" placeholder="z. B. 10, 20, 25, 30, 40, 50">
+              <small class="setting-help-inline">Kommagetrennt. Diese Jahre werden auf der Übersicht und im Vereinsjahr als Jubiläum berücksichtigt.</small>
+            </label>
           </div>
 
           <div class="card setting-card calendar-sync-card" id="calendarSyncCard">
             <h2>Google Kalender</h2>
-            <p class="setting-help">Einseitige Synchronisierung von V-Planer in einen eigenen Google-Kalender „V-Planer“. Die Einträge erscheinen anschließend automatisch auf Geräten, auf denen dein Google Kalender eingerichtet ist.</p>
+            <p class="setting-help">Zwei-Wege-Synchronisierung mit dem eigenen Google-Kalender „V-Planer“. Änderungen an Terminen werden in beide Richtungen abgeglichen; neue Termine im Google-Kalender werden automatisch in V-Planer übernommen. Aufgaben und Projekte werden ebenfalls abgeglichen, soweit ihre Kalenderdarstellung dies zulässt.</p>
 
             <div id="calendarConnectionState" class="calendar-sync-state">Google Kalender noch nicht verbunden</div>
             <div id="calendarSyncMeta" class="calendar-sync-meta">Noch nicht synchronisiert</div>
 
             <div class="switch-row">
-              <div><b>Kalendersynchronisierung aktiv</b><small>Änderungen bei bestehender Verbindung automatisch übertragen</small></div>
+              <div><b>Kalendersynchronisierung aktiv</b><small>Änderungen bei bestehender Verbindung in beide Richtungen abgleichen</small></div>
               <label class="switch"><input id="calendarSyncEnabled" type="checkbox"><span></span></label>
             </div>
             <div class="switch-row">
@@ -467,7 +509,7 @@
 
             <div class="calendar-sync-note">
               <b>Einmalige Google-Cloud-Einrichtung</b>
-              <span>Im selben Google-Cloud-Projekt wie für Drive muss zusätzlich die <strong>Google Calendar API</strong> aktiviert sein. V-Planer fordert nur die Berechtigung an, einen von V-Planer erstellten Kalender und dessen Einträge zu verwalten.</span>
+              <span>Im selben Google-Cloud-Projekt wie für Drive muss zusätzlich die <strong>Google Calendar API</strong> aktiviert sein. V-Planer verwaltet ausschließlich den von V-Planer angelegten Kalender. Neue oder geänderte Termine in diesem Kalender werden beim Synchronisieren zurück in V-Planer übernommen.</span>
             </div>
           </div>
 

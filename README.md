@@ -1,6 +1,6 @@
-# V-Planer 1.0 — Final
+# V-Planer 1.0.4 — Drive, Kalender-Sync, Vereinsjahr & Strafkatalog
 
-V-Planer 1.0 ist als responsive PWA für Desktop, Tablet und Smartphone ausgelegt.
+V-Planer 1.0.4 ist als responsive PWA für Desktop, Tablet und Smartphone ausgelegt.
 
 ## Schwerpunkte
 - Aufgaben, Projekte, Kanban, Kalender und Vereinsjahr
@@ -363,7 +363,7 @@ Das wurde korrigiert:
 
 ## Google-Kalender-Synchronisierung
 
-Unter **Einstellungen → Google Kalender** kann V-Planer einseitig mit Google Kalender verbunden werden.
+Unter **Einstellungen → Google Kalender** kann V-Planer vollständig in beide Richtungen mit dem eigens angelegten Google-Kalender synchronisiert werden.
 
 ### Funktionsweise
 - V-Planer legt beim ersten Sync einen eigenen sekundären Google-Kalender **„V-Planer“** an.
@@ -373,7 +373,7 @@ Unter **Einstellungen → Google Kalender** kann V-Planer einseitig mit Google K
 - Projekte werden am Zieldatum als ganztägiger Eintrag angelegt.
 - Änderungen in V-Planer aktualisieren den bestehenden Google-Kalender-Eintrag.
 - Gelöschte Termine sowie gelöschte oder archivierte Aufgaben/Projekte werden beim nächsten Sync aus dem V-Planer-Google-Kalender entfernt.
-- Änderungen direkt in Google Kalender werden **nicht zurück in V-Planer geschrieben**.
+- Änderungen direkt im von V-Planer angelegten Google-Kalender werden beim nächsten Sync zurück in V-Planer übernommen. Neue Google-Termine werden als V-Planer-Termine angelegt.
 - Die Verbindung ist pro Browser/Nutzer lokal. Es wird bewusst kein Google-Access-Token dauerhaft gespeichert.
 
 ### Google Cloud
@@ -387,3 +387,150 @@ Dieser Scope erlaubt der Anwendung, eigene sekundäre Kalender zu erstellen und 
 
 ### Nach einem Browser-Neustart
 Aus Sicherheitsgründen wird der Google-Access-Token nicht im Browser gespeichert. Bereits synchronisierte Termine bleiben natürlich im Google Kalender. Um neue Änderungen nach einem Neustart zu übertragen, genügt ein Klick auf **„Erneut verbinden & synchronisieren“**.
+
+
+## Neu in 1.0.1: Zwei-Wege-Kalender und kompletter Ordner-Upload
+
+### Google Kalender – Zwei-Wege-Synchronisierung
+- Änderungen an V-Planer-Terminen werden zu Google Kalender übertragen.
+- Änderungen an bereits synchronisierten Google-Terminen werden zurück nach V-Planer übernommen.
+- Neue Termine, die direkt im eigens von V-Planer angelegten Google-Kalender erstellt werden, werden als V-Planer-Termine importiert.
+- Löschungen werden in beide Richtungen abgeglichen; bei gleichzeitigen Änderungen gewinnt der zeitlich neuere Stand.
+- Aufgaben und Projekte werden ebenfalls in beide Richtungen für Titel und Fälligkeitsdatum abgeglichen.
+- Wiederkehrende Google-Serientermine werden aktuell nicht automatisch in Einzeltermine umgewandelt und beim Sync als übersprungen gemeldet.
+- Die vorhandenen Drive- und lokalen Daten bleiben kompatibel; Speicher- und AppData-Schlüssel wurden bewusst nicht umbenannt.
+
+### Ganze Ordner hochladen
+In **Sitzungen & Beschlüsse**, **Dokumente & Bilder** und **Vereinswissen** gibt es zusätzlich **„Ordner hochladen“**.
+
+- Unterordner werden anhand des vom Browser gelieferten relativen Pfads automatisch angelegt.
+- Dieselbe Struktur wird unter dem jeweiligen V-Planer-Bereich in Google Drive erstellt.
+- Der Upload startet im aktuell geöffneten V-Planer-Ordner.
+- Bereits vorhandene gleichnamige Dateien werden erkannt; vor einer weiteren gleichnamigen Kopie fragt V-Planer nach.
+- Während des Uploads wird der Fortschritt angezeigt.
+- Browser ohne Unterstützung für `webkitdirectory` können weiterhin einzelne oder mehrere Dateien hochladen.
+
+
+## Neu in 1.0.2: Ehrenmitglieder
+
+- Mitglieder können in der Mitgliederübersicht nach Ehrenmitgliedern gefiltert werden.
+- Ehrenmitglieder werden in der Mitgliederliste deutlich gekennzeichnet.
+- In den Einstellungen kann optional festgelegt werden, dass Ehrenmitglieder automatisch als beitragsfrei gelten.
+- Der Beitragsstatus wird in den Mitgliedsdetails angezeigt.
+- Die Einstellung ist rein organisatorisch; sie erzeugt keine automatischen Bank- oder Kassenbuchungen.
+- Bestehende Daten bleiben kompatibel; die neue Einstellung ist standardmäßig deaktiviert.
+
+
+## Neu in 1.0.3: vollständiges Vereinsjahr
+
+Der Reiter **Vereinsjahr** zeigt jetzt ohne Begrenzung alle datumsbezogenen Einträge des ausgewählten Jahres:
+
+- normale Termine, auch mehrtägige Termine
+- Geburtstage aller lebenden Mitglieder
+- 5-jährige Vereinsjubiläen (5, 10, 15, … Jahre)
+- fällige Aufgaben
+- Projekt-Zieldaten
+
+Über die Pfeile kann direkt zwischen den Jahren gewechselt werden. Ein Klick auf einen Eintrag öffnet den zugehörigen Termin, die Aufgabe, das Projekt oder Mitglied.
+
+
+## Neu in 1.0.4: Strafkatalog und offene Zahlungen
+
+- Unter **Strafen** gibt es den Button **Strafen bearbeiten**. Dort werden wiederkehrende Strafen mit Bezeichnung und Betrag als Vorlagen gepflegt.
+- Beim Anlegen einer neuen Strafe kann eine Vorlage ausgewählt werden; Grund und Betrag werden automatisch übernommen und können bei Bedarf angepasst werden.
+- Über das Lupensymbol neben der Mitgliedsauswahl lässt sich nach Name, Mitgliedsnummer oder E-Mail suchen.
+- Offene Strafen sind in der Übersicht deutlicher als **Offen / zu bezahlen** gekennzeichnet; überfällige Einträge werden entsprechend markiert.
+- Oberhalb der Tabelle erscheint bei offenen Strafen eine Zusammenfassung aus Anzahl und noch offenem Gesamtbetrag.
+- Bestehende Daten bleiben kompatibel. Der Strafkatalog wird ergänzend in den Einstellungen gespeichert.
+
+## Strafkatalog
+
+Unter **Finanzen → Strafen** befindet sich jetzt der Button **📋 Strafkatalog**.
+
+Im Strafkatalog werden alle angelegten Strafarten mit Bezeichnung, Standardbetrag und Anzahl der bisherigen Verwendungen angezeigt. Jede Strafart kann einzeln **bearbeitet** oder **gelöscht** werden. Neue Strafarten werden direkt über **+ Neue Strafe** angelegt.
+
+Bereits an Mitglieder vergebene Strafen bleiben beim Bearbeiten oder Löschen eines Katalogeintrags unverändert. Der Katalog dient damit als Vorlage für neue Strafen, ohne historische Einträge rückwirkend zu verändern.
+
+Beim Erstellen einer neuen Strafe kann weiterhin direkt eine Strafart aus dem Katalog gewählt werden; Bezeichnung und Betrag werden automatisch übernommen.
+
+## Mehrtägige Projekte
+
+Projekte besitzen jetzt einen **Projektzeitraum mit Von- und Bis-Datum**.
+
+- Ein eintägiges Projekt verwendet für Von und Bis dasselbe Datum.
+- Ein mehrtägiges Projekt wird im Monatskalender an jedem betroffenen Tag angezeigt.
+- Im Vereinsjahr erscheint das Projekt in jedem Monat, den der Projektzeitraum berührt.
+- Projektkarten, Dashboard und Archiv zeigen den vollständigen Zeitraum.
+- Der Google-Kalender-Sync überträgt Projekte als ganztägige Einträge über den gesamten Projektzeitraum.
+- Wird ein synchronisiertes Projekt im Google Kalender zeitlich verschoben, kann der dortige Start-/Endzeitraum wieder in V-Planer übernommen werden, soweit die bestehende Kalender-Synchronisierung dies zulässt.
+- Bestehende Projekte mit nur einem alten `due`-/Zieldatum bleiben kompatibel und werden automatisch als eintägige Projekte behandelt.
+
+Intern bleibt `due` aus Kompatibilitätsgründen erhalten und entspricht bei neuen/aktualisierten Projekten dem Bis-/Enddatum.
+
+## Geburtstage & Jubiläen auf der Übersicht
+
+Die Dashboard-Karte **Geburtstage & Jubiläen** zeigt jetzt eine gemeinsame chronologische Liste.
+
+- Geburtstage und wichtige Vereinsjubiläen werden miteinander nach dem tatsächlichen nächsten Datum sortiert.
+- Es werden die **nächsten 8 Ereignisse insgesamt** angezeigt – unabhängig davon, ob es ein Geburtstag oder ein Jubiläum ist.
+- Jeder Eintrag zeigt Datum, Anlass und Abstand in Tagen.
+- Bei Geburtstagen wird zusätzlich das kommende Alter angezeigt.
+- Bei Jubiläen wird die Jubiläumsdauer angezeigt.
+- Ein Klick auf den Eintrag öffnet direkt das betreffende Mitglied.
+
+Die Kennzahl **Geburtstage** oben auf der Übersicht zählt weiterhin gezielt die Geburtstage der nächsten 7 Tage.
+
+### Konfigurierbare Jubiläumsjahre
+
+Unter **Einstellungen → Erinnerungen** gibt es das Feld **Wichtige Jubiläumsjahre**. Standardmäßig sind eingestellt:
+
+`10, 20, 25, 30, 40, 50`
+
+Die Werte können frei geändert werden, zum Beispiel auf `10, 25, 40, 50, 60`. Nur diese Eintrittsjubiläen werden als wichtige Jubiläen auf der Übersicht und im Vereinsjahr berücksichtigt. Bereits vorhandene Mitgliedsdaten müssen dafür nicht geändert werden.
+
+## Nächster Geburtstag auf dem Dashboard
+
+Die bisherige Kennzahl **„Geburtstage in den nächsten 7 Tagen“** wurde ersetzt.
+
+Die obere Dashboard-Karte zeigt jetzt immer den **nächsten anstehenden Geburtstag**, unabhängig davon, wie weit dieser entfernt ist:
+
+- `Heute`
+- `Morgen`
+- `in 18 Tagen`
+- darunter Name, genaues Datum und kommendes Alter
+
+Die Karte kann angeklickt bzw. angetippt werden und öffnet direkt das betreffende Mitglied.
+
+Die separate Erinnerungslogik für Geburtstage innerhalb der nächsten 7 Tage bleibt bestehen. Sie dient weiterhin nur für Warn-/Hinweismeldungen und beeinflusst nicht die Anzeige des nächsten Geburtstags.
+
+## Kanban: automatische Sortierung nach Fälligkeit
+
+Innerhalb jeder Kanban-Spalte werden Aufgaben jetzt automatisch nach zeitlicher Dringlichkeit sortiert:
+
+1. überfällige Aufgaben
+2. heute fällige Aufgaben
+3. morgen fällige Aufgaben
+4. Aufgaben innerhalb der nächsten 7 Tage
+5. später fällige Aufgaben
+6. Aufgaben ohne Fälligkeitsdatum
+
+Innerhalb derselben Fälligkeit entscheidet anschließend die Priorität **Hoch → Mittel → Niedrig**. Erst danach wird alphabetisch nach Aufgabentitel sortiert.
+
+Die Fälligkeit wird direkt auf der Kanban-Karte hervorgehoben, zum Beispiel als **Heute**, **Morgen**, **in 4 Tagen** oder **3 Tage überfällig**. Das genaue Datum bleibt zusätzlich sichtbar.
+
+Das Verschieben zwischen Kanban-Spalten per Drag & Drop bleibt unverändert erhalten. Nach einem Statuswechsel wird die Karte automatisch an der passenden zeitlichen Position der neuen Spalte einsortiert.
+
+## Projekte und Termine klar getrennt und verknüpft
+
+V-Planer unterscheidet jetzt bewusst zwischen **Projekt** und **Termin**:
+
+- **Projekt:** Organisations- und Arbeitsphase mit Projektbeginn, Projektende, Aufgaben, Status und Fortschritt.
+- **Termin:** das tatsächliche Ereignis mit Datum, Uhrzeit, Ort und optionalen Hinweisen.
+
+Auf jeder Projektkarte gibt es einen Bereich **Zugehöriger Termin**. Über **+ Termin zum Projekt** kann direkt ein Termin angelegt werden. Dabei werden Projektname, Gruppe und Beschreibung übernommen; als Termindatum wird zunächst das Projektende vorgeschlagen.
+
+Bestehende freie Termine können beim Bearbeiten eines Projekts verknüpft werden. Umgekehrt besitzt der Termin das Feld **Zugehöriges Projekt**. In den Termindetails steht bei einer Verbindung **Gehört zu Projekt**.
+
+Projekt und Termin bleiben getrennte Datensätze. Die Verbindung kann jederzeit gelöst werden, ohne einen der Datensätze zu löschen. Wird ein Projekt gelöscht, bleibt der verknüpfte Termin erhalten. Wird ein Termin gelöscht, bleibt das Projekt erhalten.
+
+Die Google-Kalender-Beschreibung zeigt bei verknüpften Einträgen zusätzlich den Projekt-/Terminbezug.

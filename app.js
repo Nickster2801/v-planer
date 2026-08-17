@@ -29,10 +29,11 @@ function defaultDB(){
   return {
     version:4, updatedAt:now(), settingsUpdatedAt:now(),
     settings:{
-      clubName:"Mein Verein", userRole:"Vorstand", uiScale:100, storageLimitGB:CFG.DEFAULT_STORAGE_LIMIT_GB||5, compressImages:true,
+      clubName:"Mein Verein", userRole:"Vorstand", uiScale:100, storageLimitGB:CFG.DEFAULT_STORAGE_LIMIT_GB||5, compressImages:true, honoraryContributionFree:false,
       modules:{club:true,documents:true,finance:true},
       groupTypes:["Abteilung","Mannschaft","Trainingsgruppe","Vorstand","Ausschuss","Arbeitsgruppe","Projektgruppe"],
-      reminders:{enabled:true,infoDays:14,warningDays:7,alarmDays:2,birthdayWeek:true,jubilee:true}
+      fineCatalog:[],
+      reminders:{enabled:true,infoDays:14,warningDays:7,alarmDays:2,birthdayWeek:true,jubilee:true,jubileeYears:[10,20,25,30,40,50]}
     },
     counters:{memberNo:1},
     tasks:[],projects:[],events:[],members:[],groups:[],functions:[],meetings:[],knowledge:[],documents:[],folders:[],fines:[],financeKassenKumpelState:null,financeKassenKumpelUpdatedAt:""
@@ -46,7 +47,17 @@ function normalizeDB(data){
   out.settings.groupTypes=Array.isArray(data?.settings?.groupTypes)
     ? data.settings.groupTypes.map(x=>String(x||"").trim()).filter(Boolean)
     : [...base.settings.groupTypes];
+  out.settings.fineCatalog=Array.isArray(data?.settings?.fineCatalog)
+    ? data.settings.fineCatalog.map(x=>({
+        id:String(x?.id||uid()),
+        label:String(x?.label||x?.reason||"").trim(),
+        amount:Math.max(0,Number(x?.amount)||0)
+      })).filter(x=>x.label&&x.amount>0)
+    : [];
   out.settings.reminders={...base.settings.reminders,...(data?.settings?.reminders||{})};
+  out.settings.reminders.jubileeYears=Array.isArray(data?.settings?.reminders?.jubileeYears)
+    ? [...new Set(data.settings.reminders.jubileeYears.map(Number).filter(n=>Number.isInteger(n)&&n>0&&n<=150))].sort((a,b)=>a-b)
+    : [...base.settings.reminders.jubileeYears];
   out.counters={...base.counters,...(data?.counters||{})};
   COLLECTIONS.forEach(c=>out[c]=Array.isArray(data?.[c])?data[c]:[]);
   return out;
@@ -120,7 +131,7 @@ function saveLocal(opts={}){
   if(opts.autoCalendar!==false && hasUsableCalendarToken() && calendarPrefs().enabled) scheduleCalendarAutoSync();
 }
 function defaultCalendarPrefs(){
-  return {enabled:false,syncEvents:true,syncTasks:true,syncProjects:true,calendarName:"V-Planer"};
+  return {enabled:false,syncEvents:true,syncBirthdays:true,syncTasks:true,syncProjects:true,calendarName:"V-Planer"};
 }
 function calendarPrefs(){
   try{
@@ -161,22 +172,34 @@ function oneHourAfter(dateStr,timeStr){
 }
 function calendarRecordKey(type,id){return `${type}:${id}`}
 function calendarRecordExists(type,id){
-  const collection=type==="event"?"events":type==="task"?"tasks":type==="project"?"projects":"";
+  const collection=type==="event"?"events":type==="birthday"?"members":type==="task"?"tasks":type==="project"?"projects":"";
   return collection?db[collection].some(r=>r.id===id):false;
 }
 function calendarRecordEligible(type,rec,prefs=calendarPrefs()){
   if(!rec||rec.deletedAt)return false;
   if(type==="event")return prefs.syncEvents && !!eventStartDate(rec);
+  if(type==="birthday")return prefs.syncBirthdays && rec.status!=="deceased" && !!rec.birthDate;
   if(type==="task")return prefs.syncTasks && !rec.archivedAt && !!rec.due;
-  if(type==="project")return prefs.syncProjects && !rec.archivedAt && !!rec.due;
+  if(type==="project")return prefs.syncProjects && !rec.archivedAt && !!projectStartDate(rec);
   return false;
 }
 function calendarDescriptionLines(type,rec){
+  if(type==="birthday"){
+    return [
+      "V-Planer Geburtstag",
+      `Mitglied: ${memberFullName(rec)}`,
+      rec.memberNo?`Mitgliedsnummer: ${rec.memberNo}`:"",
+      "Wird jährlich aus dem im V-Planer hinterlegten Geburtsdatum synchronisiert."
+    ].filter(Boolean);
+  }
   if(type==="event"){
+    const linkedProject=linkedProjectForEvent(rec);
     return [
       "V-Planer Termin",
+      linkedProject?`Projekt: ${linkedProject.name}`:"",
       rec.groupId?`Gruppe: ${groupName(rec.groupId)}`:"",
-      rec.location?`Ort: ${rec.location}`:""
+      rec.location?`Ort: ${rec.location}`:"",
+      rec.description||""
     ].filter(Boolean);
   }
   if(type==="task"){
@@ -190,10 +213,12 @@ function calendarDescriptionLines(type,rec){
     ].filter(Boolean);
   }
   const stats=projectTaskStats(rec.id);
+  const linkedEvent=linkedEventForProject(rec);
   return [
     "V-Planer Projekt",
     `Status: ${statusLabel(rec.status)}`,
     `Fortschritt: ${stats.progress}% (${stats.done}/${stats.total} Aufgaben erledigt)`,
+    linkedEvent?`Zugehöriger Termin: ${linkedEvent.title} · ${projectEventSummary(linkedEvent)}`:"",
     rec.groupId?`Gruppe: ${groupName(rec.groupId)}`:"",
     rec.description||""
   ].filter(Boolean);
@@ -209,6 +234,18 @@ function googleCalendarBody(type,rec){
     description:calendarDescriptionLines(type,rec).join("\n"),
     extendedProperties:{private:privateProps}
   };
+
+  if(type==="birthday"){
+    const sd=rec.birthDate;
+    return {
+      ...common,
+      summary:`🎂 Geburtstag: ${memberFullName(rec)}`,
+      start:{date:sd},
+      end:{date:isoDayOffset(sd,1)},
+      recurrence:["RRULE:FREQ=YEARLY"],
+      transparency:"transparent"
+    };
+  }
 
   if(type==="event"){
     const sd=eventStartDate(rec),ed=eventEndDate(rec)||sd,
@@ -251,11 +288,13 @@ function googleCalendarBody(type,rec){
     };
   }
 
+  const projectStart=projectStartDate(rec),projectEnd=projectEndDate(rec)||projectStart;
   return {
     ...common,
     summary:`◆ ${rec.name||"Projekt"}`,
-    start:{date:rec.due},
-    end:{date:isoDayOffset(rec.due,1)}
+    start:{date:projectStart},
+    // Google Calendar uses an exclusive end date for all-day entries.
+    end:{date:isoDayOffset(projectEnd,1)}
   };
 }
 function initCalendarTokenClient(){
@@ -378,9 +417,8 @@ async function listVPlanerGoogleEvents(calendarId){
   do{
     const params=new URLSearchParams({
       maxResults:"2500",
-      singleEvents:"true",
-      showDeleted:"false",
-      privateExtendedProperty:"vPlanerApp=V-Planer"
+      singleEvents:"false",
+      showDeleted:"true"
     });
     if(pageToken)params.set("pageToken",pageToken);
     const data=await (await calendarFetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params}`)).json();
@@ -393,11 +431,133 @@ function remoteVPlanerEventMap(items){
   const map=new Map();
   (items||[]).forEach(item=>{
     const p=item.extendedProperties?.private||{};
-    if(p.vPlanerRecordType&&p.vPlanerRecordId){
-      map.set(calendarRecordKey(p.vPlanerRecordType,p.vPlanerRecordId),item);
-    }
+    if(!p.vPlanerRecordType||!p.vPlanerRecordId)return;
+    const key=calendarRecordKey(p.vPlanerRecordType,p.vPlanerRecordId),current=map.get(key);
+    if(!current){map.set(key,item);return;}
+    // Prefer an active event over an older cancelled master. This is especially
+    // important when a recurring birthday was deleted and safely recreated.
+    if(current.status==="cancelled"&&item.status!=="cancelled"){map.set(key,item);return;}
+    if(current.status!=="cancelled"&&item.status==="cancelled")return;
+    if(new Date(item.updated||0).getTime()>new Date(current.updated||0).getTime())map.set(key,item);
   });
   return map;
+}
+function calendarTypeCollection(type){
+  return type==="event"?"events":type==="birthday"?"members":type==="task"?"tasks":type==="project"?"projects":"";
+}
+function calendarTypeEnabled(type,prefs=calendarPrefs()){
+  if(type==="event")return !!prefs.syncEvents;
+  if(type==="birthday")return !!prefs.syncBirthdays;
+  if(type==="task")return !!prefs.syncTasks;
+  if(type==="project")return !!prefs.syncProjects;
+  return false;
+}
+function googleCalendarEventParts(item){
+  const s=item?.start||{},e=item?.end||{};
+  if(s.date){
+    const sd=s.date||"";
+    const exclusiveEnd=e.date||isoDayOffset(sd,1);
+    return {startDate:sd,endDate:isoDayOffset(exclusiveEnd,-1)||sd,startTime:"",endTime:"",allDay:true};
+  }
+  const start=String(s.dateTime||"");
+  const end=String(e.dateTime||"");
+  const sd=start.slice(0,10),ed=(end.slice(0,10)||sd);
+  return {startDate:sd,endDate:ed,startTime:start.slice(11,16),endTime:end.slice(11,16),allDay:false};
+}
+function stripCalendarPrefix(type,title){
+  const s=String(title||"").trim();
+  if(type==="birthday")return s.replace(/^🎂\s*Geburtstag:\s*/i,"")||"Geburtstag";
+  if(type==="task")return s.replace(/^✓\s*/,"")||"Aufgabe";
+  if(type==="project")return s.replace(/^◆\s*/,"")||"Projekt";
+  return s||"Termin";
+}
+function birthDateWithRemoteMonthDay(localBirthDate,remoteDate){
+  if(!remoteDate)return localBirthDate||"";
+  if(!localBirthDate)return remoteDate;
+  const year=localBirthDate.slice(0,4),candidate=`${year}-${remoteDate.slice(5,10)}`;
+  const d=new Date(`${candidate}T12:00:00`);
+  if(Number.isNaN(d.getTime())||`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`!==candidate)return localBirthDate;
+  return candidate;
+}
+function applyGoogleCalendarEventToLocal(type,rec,item){
+  const parts=googleCalendarEventParts(item);
+  if(type==="birthday"){
+    // The member record remains authoritative for the person's name and birth year.
+    // Moving the recurring birthday in Google updates only month/day in V-Planer.
+    rec.birthDate=birthDateWithRemoteMonthDay(rec.birthDate,parts.startDate);
+  }else if(type==="event"){
+    Object.assign(rec,{
+      title:stripCalendarPrefix(type,item.summary),
+      startDate:parts.startDate,
+      endDate:parts.endDate||parts.startDate,
+      startTime:parts.startTime,
+      endTime:parts.endTime,
+      date:parts.startDate,
+      time:parts.startTime,
+      location:item.location||"",
+      groupId:rec.groupId||"",
+      color:rec.color||"#1677c8"
+    });
+  }else if(type==="task"){
+    rec.title=stripCalendarPrefix(type,item.summary);
+    rec.due=parts.startDate||rec.due||"";
+    rec.status=rec.status||"open";
+    rec.priority=rec.priority||"mid";
+    rec.projectId=rec.projectId||"";
+    rec.groupId=rec.groupId||"";
+    rec.description=rec.description||"";
+  }else if(type==="project"){
+    rec.name=stripCalendarPrefix(type,item.summary);
+    rec.startDate=parts.startDate||projectStartDate(rec)||"";
+    rec.endDate=parts.endDate||rec.startDate;
+    // Legacy due remains the project end/target date for old views and data.
+    rec.due=rec.endDate||rec.startDate||"";
+    rec.status=rec.status||"active";
+    rec.groupId=rec.groupId||"";
+    rec.description=rec.description||"";
+  }
+  rec.calendarGoogleEventId=item.id||rec.calendarGoogleEventId||"";
+  rec.updatedAt=item.updated||now();
+  delete rec.deletedAt;
+  return rec;
+}
+function createLocalFromGoogleCalendar(type,item,preferredId=""){
+  const common={id:preferredId||uid(),createdAt:item.created||now(),updatedAt:item.updated||now(),calendarGoogleEventId:item.id||""};
+  let rec;
+  if(type==="task")rec={...common,title:"Aufgabe",due:"",priority:"mid",projectId:"",groupId:"",status:"open",description:""};
+  else if(type==="project")rec={...common,name:"Projekt",startDate:"",endDate:"",due:"",status:"active",groupId:"",description:""};
+  else rec={...common,title:"Termin",startDate:"",endDate:"",startTime:"",endTime:"",date:"",time:"",location:"",groupId:"",color:"#1677c8"};
+  applyGoogleCalendarEventToLocal(type,rec,item);
+  return rec;
+}
+function setCalendarSyncMarkers(rec,item){
+  if(item?.id)rec.calendarGoogleEventId=item.id;
+  rec.calendarLastLocalUpdatedAt=rec.updatedAt||"";
+  rec.calendarLastRemoteUpdatedAt=item?.updated||"";
+}
+function calendarRemoteMatchesLocal(type,rec,item){
+  const parts=googleCalendarEventParts(item);
+  if(type==="birthday"){
+    const expectedTitle=`🎂 Geburtstag: ${memberFullName(rec)}`;
+    const yearly=(item.recurrence||[]).some(x=>String(x).toUpperCase().includes("FREQ=YEARLY"));
+    return String(item.summary||"")===expectedTitle && parts.startDate===(rec.birthDate||"") && yearly;
+  }
+  if(type==="event"){
+    return stripCalendarPrefix(type,item.summary)===(rec.title||"Termin") &&
+      String(item.location||"")===String(rec.location||"") &&
+      parts.startDate===eventStartDate(rec) &&
+      parts.endDate===(eventEndDate(rec)||eventStartDate(rec)) &&
+      parts.startTime===eventStartTime(rec) &&
+      parts.endTime===eventEndTime(rec);
+  }
+  if(type==="task")return stripCalendarPrefix(type,item.summary)===(rec.title||"Aufgabe")&&parts.startDate===(rec.due||"");
+  if(type==="project")return stripCalendarPrefix(type,item.summary)===(rec.name||"Projekt")&&
+    parts.startDate===projectStartDate(rec)&&
+    parts.endDate===projectEndDate(rec);
+  return false;
+}
+function calendarRemoteIsNewer(item,rec){
+  return new Date(item?.updated||0).getTime()>new Date(rec?.updatedAt||0).getTime();
 }
 async function deleteGoogleCalendarEvent(calendarId,eventId){
   try{
@@ -406,12 +566,9 @@ async function deleteGoogleCalendarEvent(calendarId,eventId){
     if(e.status!==404&&e.status!==410)throw e;
   }
 }
-async function upsertGoogleCalendarEvent(calendarId,type,rec,remote){
+async function writeGoogleCalendarEvent(calendarId,type,rec,remote=null){
   const body=googleCalendarBody(type,rec);
-  const remoteVersion=remote?.extendedProperties?.private?.vPlanerUpdatedAt||"";
-  if(remote&&remoteVersion===(rec.updatedAt||""))return {action:"unchanged",event:remote};
-
-  if(remote?.id){
+  if(remote?.id&&remote.status!=="cancelled"){
     try{
       const updated=await (await calendarFetch(
         `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(remote.id)}`,
@@ -422,12 +579,25 @@ async function upsertGoogleCalendarEvent(calendarId,type,rec,remote){
       if(e.status!==404&&e.status!==410)throw e;
     }
   }
-
   const created=await (await calendarFetch(
     `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`,
     {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}
   )).json();
   return {action:"created",event:created};
+}
+async function tagGoogleCalendarEvent(calendarId,item,type,rec){
+  const oldPrivate=item.extendedProperties?.private||{};
+  const body={extendedProperties:{private:{
+    ...oldPrivate,
+    vPlanerApp:"V-Planer",
+    vPlanerRecordType:type,
+    vPlanerRecordId:rec.id,
+    vPlanerUpdatedAt:rec.updatedAt||""
+  }}};
+  return await (await calendarFetch(
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(item.id)}`,
+    {method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}
+  )).json();
 }
 async function syncGoogleCalendar({interactive=false}={}){
   const prefs=calendarPrefs();
@@ -437,7 +607,7 @@ async function syncGoogleCalendar({interactive=false}={}){
   }
   if(calendarSyncRunning)return;
   calendarSyncRunning=true;
-  renderCalendarSyncSettings("Synchronisiere mit Google Kalender …");
+  renderCalendarSyncSettings("Synchronisiere in beide Richtungen mit Google Kalender …");
 
   try{
     if(!hasUsableCalendarToken()){
@@ -447,48 +617,177 @@ async function syncGoogleCalendar({interactive=false}={}){
 
     const calendarId=await ensureVPlanerGoogleCalendar();
     const remoteItems=await listVPlanerGoogleEvents(calendarId);
-    const remote=remoteVPlanerEventMap(remoteItems);
-    const localKeys=new Set();
-    let created=0,updated=0,deleted=0,unchanged=0;
+    const remoteByKey=remoteVPlanerEventMap(remoteItems);
+    const remoteById=new Map(remoteItems.filter(x=>x?.id).map(x=>[x.id,x]));
+    const claimedRemoteIds=new Set();
+    let created=0,updated=0,pulled=0,imported=0,deletedRemote=0,deletedLocal=0,unchanged=0,conflicts=0,skippedRecurring=0;
 
-    const sets=[
-      ["event",db.events],
-      ["task",db.tasks],
-      ["project",db.projects]
-    ];
+    const sets=[["event",db.events],["birthday",db.members],["task",db.tasks],["project",db.projects]];
 
     for(const [type,records] of sets){
+      if(!calendarTypeEnabled(type,prefs))continue;
       for(const rec of records){
         const key=calendarRecordKey(type,rec.id);
-        localKeys.add(key);
-        const remoteEvent=remote.get(key);
-        const eligible=calendarRecordEligible(type,rec,prefs);
+        let remote=remoteByKey.get(key)||remoteById.get(rec.calendarGoogleEventId||"")||null;
+        if(remote?.id)claimedRemoteIds.add(remote.id);
 
-        if(!eligible){
-          if(remoteEvent?.id){
-            await deleteGoogleCalendarEvent(calendarId,remoteEvent.id);
-            deleted++;
+        const isDeleted=!!rec.deletedAt;
+        const isEligible=calendarRecordEligible(type,rec,prefs);
+
+        // Local deletion wins unless Google contains a truly newer edit.
+        if(isDeleted){
+          if(remote&&remote.status!=="cancelled"){
+            if(calendarRemoteIsNewer(remote,rec)){
+              applyGoogleCalendarEventToLocal(type,rec,remote);
+              setCalendarSyncMarkers(rec,remote);
+              pulled++;conflicts++;
+            }else{
+              await deleteGoogleCalendarEvent(calendarId,remote.id);
+              deletedRemote++;
+            }
           }
           continue;
         }
 
-        const result=await upsertGoogleCalendarEvent(calendarId,type,rec,remoteEvent);
-        if(result.action==="created")created++;
-        else if(result.action==="updated")updated++;
-        else unchanged++;
+        // Archived records / records without a synchronisable date are removed from the calendar.
+        if(!isEligible){
+          if(remote?.id&&remote.status!=="cancelled"){
+            await deleteGoogleCalendarEvent(calendarId,remote.id);
+            deletedRemote++;
+          }
+          continue;
+        }
+
+        // Google deletion: regular records are removed locally unless a newer local edit exists.
+        // A birthday is derived from member master data; deleting it in Google must never delete the member.
+        // Therefore a deleted birthday series is safely recreated on the next sync.
+        if(remote?.status==="cancelled"){
+          if(type==="birthday"){
+            const result=await writeGoogleCalendarEvent(calendarId,type,rec,null);
+            setCalendarSyncMarkers(rec,result.event);
+            created++;
+            continue;
+          }
+          const localChanged=!!rec.calendarLastLocalUpdatedAt&&rec.updatedAt!==rec.calendarLastLocalUpdatedAt;
+          if(localChanged&&!calendarRemoteIsNewer(remote,rec)){
+            const result=await writeGoogleCalendarEvent(calendarId,type,rec,null);
+            setCalendarSyncMarkers(rec,result.event);
+            created++;conflicts++;
+          }else{
+            rec.deletedAt=remote.updated||now();
+            rec.updatedAt=rec.deletedAt;
+            rec.calendarGoogleEventId=remote.id||rec.calendarGoogleEventId||"";
+            rec.calendarLastLocalUpdatedAt=rec.updatedAt;
+            rec.calendarLastRemoteUpdatedAt=remote.updated||"";
+            deletedLocal++;
+          }
+          continue;
+        }
+
+        if(!remote){
+          // A record that was previously linked but disappeared remotely is treated as a Google deletion.
+          // Birthday series are an exception: the member/birth date is never deleted by a calendar action.
+          if(rec.calendarGoogleEventId&&rec.calendarLastRemoteUpdatedAt){
+            if(type==="birthday"){
+              conflicts++;
+            }else{
+              const localChanged=rec.updatedAt!==rec.calendarLastLocalUpdatedAt;
+              if(!localChanged){
+                rec.deletedAt=now();rec.updatedAt=rec.deletedAt;deletedLocal++;
+                continue;
+              }
+              conflicts++;
+            }
+          }
+          const result=await writeGoogleCalendarEvent(calendarId,type,rec,null);
+          setCalendarSyncMarkers(rec,result.event);
+          created++;
+          continue;
+        }
+
+        const remoteVersion=remote.extendedProperties?.private?.vPlanerUpdatedAt||"";
+        const hasMarkers=!!(rec.calendarLastLocalUpdatedAt||rec.calendarLastRemoteUpdatedAt);
+
+        // Migration from the former one-way synchronisation: compare the actual calendar fields.
+        // This also detects a Google-side edit even when the old vPlanerUpdatedAt marker still matches.
+        const remoteMatchesLocal=calendarRemoteMatchesLocal(type,rec,remote);
+        if(!hasMarkers&&remoteVersion&&(remoteVersion===(rec.updatedAt||""))&&remoteMatchesLocal){
+          setCalendarSyncMarkers(rec,remote);unchanged++;continue;
+        }
+
+        const localChanged=hasMarkers
+          ? rec.updatedAt!==rec.calendarLastLocalUpdatedAt
+          : (!!remoteVersion?remoteVersion!==rec.updatedAt:!remoteMatchesLocal&&new Date(rec.updatedAt||0)>new Date(remote.updated||0));
+        const remoteChanged=hasMarkers
+          ? remote.updated!==rec.calendarLastRemoteUpdatedAt
+          : !remoteMatchesLocal;
+
+        if(remoteChanged&&!localChanged){
+          applyGoogleCalendarEventToLocal(type,rec,remote);
+          setCalendarSyncMarkers(rec,remote);
+          pulled++;
+        }else if(localChanged&&!remoteChanged){
+          const result=await writeGoogleCalendarEvent(calendarId,type,rec,remote);
+          setCalendarSyncMarkers(rec,result.event);
+          updated++;
+        }else if(remoteChanged&&localChanged){
+          conflicts++;
+          if(calendarRemoteIsNewer(remote,rec)){
+            applyGoogleCalendarEventToLocal(type,rec,remote);
+            setCalendarSyncMarkers(rec,remote);
+            pulled++;
+          }else{
+            const result=await writeGoogleCalendarEvent(calendarId,type,rec,remote);
+            setCalendarSyncMarkers(rec,result.event);
+            updated++;
+          }
+        }else{
+          setCalendarSyncMarkers(rec,remote);unchanged++;
+        }
       }
     }
 
-    // Remove app-created remote entries whose V-Planer record no longer exists.
-    for(const [key,item] of remote.entries()){
-      if(!localKeys.has(key)&&item?.id){
-        await deleteGoogleCalendarEvent(calendarId,item.id);
-        deleted++;
+    // Import entries created directly in the dedicated Google calendar.
+    for(const item of remoteItems){
+      if(!item?.id||claimedRemoteIds.has(item.id)||item.status==="cancelled")continue;
+      if(item.recurrence?.length||item.recurringEventId){skippedRecurring++;continue;}
+      const p=item.extendedProperties?.private||{};
+      // Only independent Google records can create new V-Planer work items.
+      // A Google calendar entry must never create a new member just because it resembles a birthday.
+      let type=(p.vPlanerApp==="V-Planer"&&["event","task","project"].includes(p.vPlanerRecordType))?p.vPlanerRecordType:"event";
+      if(!calendarTypeEnabled(type,prefs))continue;
+      const collection=calendarTypeCollection(type);
+      if(!collection)continue;
+
+      const preferredId=(p.vPlanerApp==="V-Planer"&&p.vPlanerRecordId)?p.vPlanerRecordId:"";
+      const already=preferredId?db[collection].find(r=>r.id===preferredId):null;
+      if(already)continue;
+
+      const rec=createLocalFromGoogleCalendar(type,item,preferredId);
+      db[collection].push(rec);
+      let tagged=item;
+      if(p.vPlanerApp!=="V-Planer"||p.vPlanerRecordId!==rec.id||p.vPlanerRecordType!==type){
+        tagged=await tagGoogleCalendarEvent(calendarId,item,type,rec);
       }
+      setCalendarSyncMarkers(rec,tagged);
+      claimedRemoteIds.add(item.id);
+      imported++;
     }
 
+    // Persist imported/pulled changes locally and into Drive app-data without triggering a sync loop.
+    saveLocal({autoCalendar:false});
     localStorage.setItem("v-planer-calendar-last-sync-v1",now());
-    renderCalendarSyncSettings(`Synchronisiert: ${created} neu · ${updated} aktualisiert · ${deleted} entfernt`);
+    const parts=[
+      created?`${created} neu zu Google`:"",
+      updated?`${updated} in Google aktualisiert`:"",
+      pulled?`${pulled} aus Google aktualisiert`:"",
+      imported?`${imported} aus Google neu`:"",
+      deletedRemote?`${deletedRemote} in Google entfernt`:"",
+      deletedLocal?`${deletedLocal} in V-Planer entfernt`:"",
+      conflicts?`${conflicts} Konflikt${conflicts===1?"":"e"} automatisch nach letzter Änderung gelöst`:"",
+      skippedRecurring?`${skippedRecurring} Serientermin${skippedRecurring===1?"":"e"} übersprungen`:""
+    ].filter(Boolean);
+    renderCalendarSyncSettings(`Synchronisiert: ${parts.join(" · ")||`${unchanged} unverändert`}`);
   }finally{
     calendarSyncRunning=false;
   }
@@ -513,6 +812,7 @@ function renderCalendarSyncSettings(statusOverride=""){
 
   $("#calendarSyncEnabled").checked=!!prefs.enabled;
   $("#calendarSyncEvents").checked=!!prefs.syncEvents;
+  $("#calendarSyncBirthdays").checked=!!prefs.syncBirthdays;
   $("#calendarSyncTasks").checked=!!prefs.syncTasks;
   $("#calendarSyncProjects").checked=!!prefs.syncProjects;
   $("#calendarName").value=prefs.calendarName||"V-Planer";
@@ -541,6 +841,7 @@ function saveCalendarPrefsFromForm(){
   const prefs=saveCalendarPrefs({
     enabled:$("#calendarSyncEnabled").checked,
     syncEvents:$("#calendarSyncEvents").checked,
+    syncBirthdays:$("#calendarSyncBirthdays").checked,
     syncTasks:$("#calendarSyncTasks").checked,
     syncProjects:$("#calendarSyncProjects").checked,
     calendarName:$("#calendarName").value.trim()||"V-Planer"
@@ -624,7 +925,7 @@ function buildBackupPayload(){
   return {
     format:"V-Planer-Backup",
     backupVersion:1,
-    appVersion:"1.0",
+    appVersion:"1.0.4",
     exportedAt:now(),
     data:db
   };
@@ -837,9 +1138,74 @@ function daysToBirthday(m, ref=new Date()){
 }
 function upcomingBirthdays(maxDays=7){ return activeRows("members").filter(m=>m.status!=="deceased"&&m.birthDate).map(m=>({...m,_days:daysToBirthday(m)})).filter(m=>m._days>=0&&m._days<=maxDays).sort((a,b)=>a._days-b._days); }
 function jubileeYears(m,year=new Date().getFullYear()){ if(!m.entryDate)return 0; return year-Number(m.entryDate.slice(0,4)); }
-function upcomingJubilees(maxDays=30){
-  if(!db.settings.reminders.jubilee)return[]; const ref=new Date();
-  return activeRows("members").filter(m=>m.entryDate&&m.status!=="deceased").map(m=>{const [,mo,da]=m.entryDate.split("-").map(Number); let next=new Date(ref.getFullYear(),mo-1,da,12); const r=new Date(ref.getFullYear(),ref.getMonth(),ref.getDate(),12); if(next<r)next=new Date(ref.getFullYear()+1,mo-1,da,12); const days=Math.round((next-r)/86400000); const years=next.getFullYear()-Number(m.entryDate.slice(0,4)); return {...m,_days:days,_years:years};}).filter(m=>m._days<=maxDays&&m._years>0&&m._years%5===0).sort((a,b)=>a._days-b._days);
+function configuredJubileeYears(){
+  const values=db.settings.reminders?.jubileeYears;
+  return Array.isArray(values)?values.map(Number).filter(n=>Number.isInteger(n)&&n>0):[];
+}
+function isConfiguredJubilee(years){
+  return configuredJubileeYears().includes(Number(years));
+}
+function nextRecurringInfo(dateStr,ref=new Date()){
+  if(!dateStr)return null;
+  const [,mo,da]=dateStr.split("-").map(Number);
+  if(!mo||!da)return null;
+
+  const refDay=new Date(ref.getFullYear(),ref.getMonth(),ref.getDate(),12);
+  let next=new Date(ref.getFullYear(),mo-1,da,12);
+
+  // Handle leap-day-style invalid dates by moving to the last valid day
+  // of the intended month.
+  if(next.getMonth()!==mo-1){
+    next=new Date(ref.getFullYear(),mo,0,12);
+  }
+  if(next<refDay){
+    next=new Date(ref.getFullYear()+1,mo-1,da,12);
+    if(next.getMonth()!==mo-1)next=new Date(ref.getFullYear()+1,mo,0,12);
+  }
+
+  const days=Math.round((next-refDay)/86400000);
+  const date=`${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,"0")}-${String(next.getDate()).padStart(2,"0")}`;
+  return {date,days,year:next.getFullYear()};
+}
+function upcomingJubilees(maxDays=365){
+  if(!db.settings.reminders.jubilee)return[];
+  return activeRows("members")
+    .filter(m=>m.entryDate&&m.status!=="deceased")
+    .map(m=>{
+      const info=nextRecurringInfo(m.entryDate);
+      if(!info)return null;
+      const years=info.year-Number(m.entryDate.slice(0,4));
+      return {...m,_days:info.days,_date:info.date,_years:years,_kind:"jubilee"};
+    })
+    .filter(Boolean)
+    .filter(m=>m._days>=0&&m._days<=maxDays&&m._years>0&&isConfiguredJubilee(m._years))
+    .sort((a,b)=>a._days-b._days||memberFullName(a).localeCompare(memberFullName(b),"de"));
+}
+function dashboardPersonalEvents(limit=8){
+  const birthdays=activeRows("members")
+    .filter(m=>m.status!=="deceased"&&m.birthDate)
+    .map(m=>{
+      const info=nextRecurringInfo(m.birthDate);
+      if(!info)return null;
+      const age=info.year-Number(m.birthDate.slice(0,4));
+      return {...m,_kind:"birthday",_days:info.days,_date:info.date,_age:age};
+    })
+    .filter(Boolean);
+
+  const jubilees=upcomingJubilees(366);
+
+  return [...birthdays,...jubilees]
+    .sort((a,b)=>
+      a._days-b._days ||
+      (a._kind===b._kind?0:(a._kind==="birthday"?-1:1)) ||
+      memberFullName(a).localeCompare(memberFullName(b),"de")
+    )
+    .slice(0,limit);
+}
+function relativePersonalDateText(days){
+  if(days===0)return "heute";
+  if(days===1)return "morgen";
+  return `in ${days} Tagen`;
 }
 
 function descendants(groupId){
@@ -896,13 +1262,36 @@ function renderDashboard(){
   const tasks=activeRows("tasks"), projects=activeRows("projects"), members=activeRows("members");
   const open=tasks.filter(t=>t.status!=="done"); const today=open.filter(t=>t.due===todayStr()).length; const week=open.filter(t=>{const d=daysUntil(t.due);return d!==null&&d>=0&&d<=7}).length;
   $("#metricOpenTasks").textContent=open.length; $("#metricTaskHint").textContent=`Heute ${today} · Woche ${week}`;
-  $("#metricProjects").textContent=projects.filter(p=>p.status==="active").length; $("#metricProjectHint").textContent=`${projects.filter(p=>p.due&&p.status!=="closed").length} mit Termin`;
+  $("#metricProjects").textContent=projects.filter(p=>p.status==="active").length; $("#metricProjectHint").textContent=`${projects.filter(p=>projectStartDate(p)&&p.status!=="closed").length} mit Zeitraum`;
   $("#metricMembers").textContent=members.length; $("#metricMemberHint").textContent=`${members.filter(m=>m.status==="active").length} aktiv`;
-  const bdays=upcomingBirthdays(7); $("#metricBirthdays").textContent=bdays.length;
+  const nextBirthday=activeRows("members")
+    .filter(m=>m.status!=="deceased"&&m.birthDate)
+    .map(m=>{
+      const info=nextRecurringInfo(m.birthDate);
+      if(!info)return null;
+      return {...m,_days:info.days,_date:info.date,_age:info.year-Number(m.birthDate.slice(0,4))};
+    })
+    .filter(Boolean)
+    .sort((a,b)=>a._days-b._days||memberFullName(a).localeCompare(memberFullName(b),"de"))[0]||null;
+
+  if(nextBirthday){
+    $("#metricBirthdays").textContent=nextBirthday._days===0?"Heute":nextBirthday._days===1?"Morgen":`in ${nextBirthday._days} Tagen`;
+    const hint=$("#metricBirthdayHint");
+    if(hint)hint.textContent=`${memberFullName(nextBirthday)} · ${fmtDate(nextBirthday._date)} · wird ${nextBirthday._age}`;
+  }else{
+    $("#metricBirthdays").textContent="—";
+    const hint=$("#metricBirthdayHint");
+    if(hint)hint.textContent="Noch kein Geburtstag hinterlegt";
+  }
+
+  const bdays=upcomingBirthdays(7);
 
   const alertItems=[];
   const overdue=open.filter(t=>daysUntil(t.due)<0).length; if(overdue)alertItems.push(`${overdue} überfällige Aufgabe${overdue===1?"":"n"}`);
-  const alarms=projects.filter(p=>p.status!=="closed"&&daysUntil(p.due)!==null&&daysUntil(p.due)<=db.settings.reminders.alarmDays&&daysUntil(p.due)>=0).length; if(alarms)alertItems.push(`${alarms} Projekt${alarms===1?"":"e"} im Alarm-Zeitraum`);
+  const alarms=projects.filter(p=>{
+    const end=projectEndDate(p),days=daysUntil(end);
+    return p.status!=="closed"&&days!==null&&days<=db.settings.reminders.alarmDays&&days>=0;
+  }).length; if(alarms)alertItems.push(`${alarms} Projekt${alarms===1?"":"e"} im Alarm-Zeitraum`);
   if(db.settings.reminders.birthdayWeek&&bdays.length)alertItems.push(`${bdays.length} Geburtstag${bdays.length===1?"":"e"} in den nächsten 7 Tagen`);
   $("#alertStrip").classList.toggle("hidden",!alertItems.length); $("#alertStrip").textContent=alertItems.length?`⚠ ${alertItems.join(" · ")}`:"";
 
@@ -910,11 +1299,52 @@ function renderDashboard(){
   $("#dashboardTasks").innerHTML=list.length?list.map(t=>`<div class="mini-row"><input type="checkbox" data-finish-task="${t.id}"><div><div class="mini-title">${esc(t.title)}</div><div class="mini-meta">${esc(projectName(t.projectId))} · ${esc(groupName(t.groupId))}</div></div><span class="badge ${reminderClass(t.due)}">${esc(dueText(t.due))}</span></div>`).join(""):`<div class="empty">Keine offenen Aufgaben.</div>`;
   $$('[data-finish-task]').forEach(el=>el.onchange=()=>{const t=byId("tasks",el.dataset.finishTask);if(t){t.status="done";touch(t);saveLocal()}});
 
-  const ps=projects.filter(p=>p.status!=="closed").sort((a,b)=>(a.due||"9999").localeCompare(b.due||"9999"));
-  $("#dashboardProjects").innerHTML=ps.length?ps.map(p=>{const st=projectTaskStats(p.id);return `<div class="project-mini"><div class="row"><div><div class="mini-title">${esc(p.name)}</div><div class="mini-meta">${esc(groupName(p.groupId))} · ${st.done}/${st.total} Aufgaben erledigt</div></div><span class="project-days ${projectDayClass(p.due)}">${esc(dueText(p.due))}</span></div><div class="progress"><span style="width:${st.progress}%"></span></div><div class="mini-meta" style="text-align:right">${st.progress}%</div></div>`}).join(""):`<div class="empty">Noch keine Projekte.</div>`;
+  const ps=projects.filter(p=>p.status!=="closed").sort((a,b)=>(projectStartDate(a)||"9999").localeCompare(projectStartDate(b)||"9999"));
+  $("#dashboardProjects").innerHTML=ps.length?ps.map(p=>{
+    const st=projectTaskStats(p.id),end=projectEndDate(p);
+    return `<div class="project-mini"><div class="row"><div><div class="mini-title">${esc(p.name)}</div><div class="mini-meta">${esc(groupName(p.groupId))} · ${esc(projectDateRangeText(p))} · ${st.done}/${st.total} Aufgaben erledigt</div></div><span class="project-days ${projectDayClass(end)}">${end?esc(dueText(end)):"ohne Zeitraum"}</span></div><div class="progress"><span style="width:${st.progress}%"></span></div><div class="mini-meta" style="text-align:right">${st.progress}%</div></div>`;
+  }).join(""):`<div class="empty">Noch keine Projekte.</div>`;
 
-  const birthdays=[...bdays.slice(0,5),...upcomingJubilees(30).slice(0,3)];
-  $("#dashboardBirthdays").innerHTML=birthdays.length?birthdays.map(m=>m._years?`<div class="birthday-row"><div class="person-dot">★</div><div><div class="mini-title">${esc(memberFullName(m))}</div><div class="mini-meta">${m._years}. Vereinsjubiläum · ${m._days===0?"heute":`in ${m._days} Tagen`}</div></div></div>`:`<div class="birthday-row"><div class="person-dot">🎂</div><div><div class="mini-title">${esc(memberFullName(m))}</div><div class="mini-meta">${m._days===0?"Heute Geburtstag":m._days===1?"Morgen Geburtstag":`in ${m._days} Tagen`} · wird ${ageAt(m.birthDate,new Date(new Date().setDate(new Date().getDate()+m._days)))+1}</div></div></div>`).join(""):`<div class="empty">Keine Geburtstage oder Jubiläen in Kürze.</div>`;
+  const personalEvents=dashboardPersonalEvents(8);
+  $("#dashboardBirthdays").innerHTML=personalEvents.length?personalEvents.map(item=>{
+    const isJubilee=item._kind==="jubilee";
+    const meta=isJubilee
+      ?`${fmtDate(item._date)} · ${item._years}. Vereinsjubiläum · ${relativePersonalDateText(item._days)}`
+      :`${fmtDate(item._date)} · Geburtstag · ${relativePersonalDateText(item._days)} · wird ${item._age}`;
+    return `<button type="button" class="birthday-row personal-event-row" data-dashboard-member="${item.id}">
+      <div class="person-dot">${isJubilee?"★":"🎂"}</div>
+      <div class="personal-event-copy">
+        <div class="mini-title">${esc(memberFullName(item))}</div>
+        <div class="mini-meta">${esc(meta)}</div>
+      </div>
+      <span class="personal-event-type ${isJubilee?"jubilee":"birthday"}">${isJubilee?"Jubiläum":"Geburtstag"}</span>
+    </button>`;
+  }).join(""):`<div class="empty">Keine Geburtstage oder Jubiläen vorhanden.</div>`;
+
+  $$("[data-dashboard-member]").forEach(btn=>btn.onclick=()=>{
+    const member=byId("members",btn.dataset.dashboardMember);
+    if(!member)return;
+    selectedMemberId=member.id;
+    renderMembers();
+    go("members");
+  });
+  const birthdayMetric=$(".next-birthday-metric");
+  if(birthdayMetric){
+    birthdayMetric.classList.toggle("is-clickable",!!nextBirthday);
+    birthdayMetric.onclick=nextBirthday?()=>{
+      selectedMemberId=nextBirthday.id;
+      renderMembers();
+      go("members");
+    }:null;
+    birthdayMetric.setAttribute("role",nextBirthday?"button":"group");
+    birthdayMetric.tabIndex=nextBirthday?0:-1;
+    birthdayMetric.onkeydown=nextBirthday?(e=>{
+      if(e.key==="Enter"||e.key===" "){
+        e.preventDefault();
+        birthdayMetric.click();
+      }
+    }):null;
+  }
 
   const ev=activeRows("events")
     .filter(e=>eventEndDate(e)>=todayStr())
@@ -934,7 +1364,7 @@ function calendarTaskRowHTML(t){
 function calendarProjectRowHTML(p){
   return `<button type="button" class="event-row event-row-button calendar-linked-row calendar-project-row" data-calendar-project="${p.id}">
     <div class="calendar-type-box project-type-box">◆</div>
-    <div><div class="mini-title">${esc(p.name)}</div><div class="mini-meta">Projektziel · ${fmtDate(p.due)} · ${esc(groupName(p.groupId))}</div></div>
+    <div><div class="mini-title">${esc(p.name)}</div><div class="mini-meta">Projekt · ${esc(projectDateRangeText(p))} · ${esc(groupName(p.groupId))}</div></div>
   </button>`;
 }
 function bindCalendarWorkOpeners(scope=document){
@@ -946,6 +1376,31 @@ function bindCalendarWorkOpeners(scope=document){
     const p=byId("projects",btn.dataset.calendarProject);
     if(p)openProjectModal(p);
   });
+}
+
+function projectStartDate(p){ return p?.startDate||p?.due||""; }
+function projectEndDate(p){ return p?.endDate||p?.due||projectStartDate(p); }
+function projectIsMultiDay(p){
+  const start=projectStartDate(p),end=projectEndDate(p);
+  return !!start&&!!end&&start!==end;
+}
+function projectOccursOn(p,dateStr){
+  const start=projectStartDate(p),end=projectEndDate(p);
+  return !!start&&dateStr>=start&&dateStr<=(end||start);
+}
+function projectDateRangeText(p){
+  const start=projectStartDate(p),end=projectEndDate(p);
+  if(!start)return "Kein Zeitraum";
+  if(!end||end===start)return fmtDate(start);
+  return `${fmtDate(start)} – ${fmtDate(end)}`;
+}
+function projectOverlapsMonth(p,year,monthIndex){
+  const start=projectStartDate(p),end=projectEndDate(p);
+  if(!start)return false;
+  const monthStart=`${year}-${String(monthIndex+1).padStart(2,"0")}-01`;
+  const lastDay=new Date(year,monthIndex+1,0).getDate();
+  const monthEnd=`${year}-${String(monthIndex+1).padStart(2,"0")}-${String(lastDay).padStart(2,"0")}`;
+  return start<=monthEnd&&(end||start)>=monthStart;
 }
 
 function eventStartDate(e){ return e.startDate||e.date||""; }
@@ -986,7 +1441,7 @@ function eventRowHTML(e){
     <div class="date-box event-date-box">${start?String(d.getDate()).padStart(2,"0"):"—"}<small>${start?d.toLocaleDateString("de-DE",{month:"short"}).toUpperCase():""}</small></div>
     <div>
       <div class="mini-title">${esc(e.title)}</div>
-      <div class="mini-meta">${range?`${esc(range)} · `:""}${time?esc(time):""}${e.location?`${time?" · ":""}${esc(e.location)}`:""}</div>
+      <div class="mini-meta">${range?`${esc(range)} · `:""}${time?esc(time):""}${e.location?`${time?" · ":""}${esc(e.location)}`:""}${linkedProjectForEvent(e)?` · Projekt: ${esc(linkedProjectForEvent(e).name)}`:""}</div>
     </div>
   </button>`;
 }
@@ -1098,7 +1553,7 @@ function renderArchive(){
       <div class="archive-icon">📁</div>
       <div class="archive-copy">
         <b>${esc(p.name)}</b>
-        <span>${esc(groupName(p.groupId))} · Ziel ${fmtDate(p.due)}</span>
+        <span>${esc(groupName(p.groupId))} · ${esc(projectDateRangeText(p))}</span>
         ${p.description?`<small>${esc(p.description)}</small>`:""}
         <em>Archiviert ${esc(archiveDateText(p.archivedAt))} · ${st.done}/${st.total} Aufgaben erledigt</em>
       </div>
@@ -1241,12 +1696,26 @@ function renderProjects(){
       if(a.status!=="done"&&b.status==="done")return -1;
       return (a.due||"9999").localeCompare(b.due||"9999");
     });
-    const st=projectTaskStats(p.id);
+    const st=projectTaskStats(p.id),linkedEvent=linkedEventForProject(p);
     return `<div class="card project-card project-card-with-tasks">
       <div class="row"><h3>${esc(p.name)}</h3>${statusBadge(p.status)}</div>
       <p>${esc(p.description||"Keine Beschreibung hinterlegt.")}</p>
-      <div class="mini-meta">${esc(groupName(p.groupId))} · Ziel ${fmtDate(p.due)}</div>
-      <div class="project-days ${projectDayClass(p.due)}">${esc(dueText(p.due))}</div>
+      <div class="mini-meta">${esc(groupName(p.groupId))} · Projektzeitraum: ${esc(projectDateRangeText(p))}</div>
+      <div class="project-days ${projectDayClass(projectEndDate(p))}">${projectEndDate(p)?esc(dueText(projectEndDate(p))):"ohne Zeitraum"}</div>
+
+      <div class="project-linked-event ${linkedEvent?"has-event":""}">
+        <div class="project-linked-event-icon">${linkedEvent?"●":"○"}</div>
+        <div class="project-linked-event-copy">
+          <b>${linkedEvent?"Zugehöriger Termin":"Noch kein Termin verknüpft"}</b>
+          <span>${linkedEvent?`${esc(linkedEvent.title)} · ${esc(projectEventSummary(linkedEvent))}`:"Das Projekt organisiert die Arbeit. Der Termin bildet das tatsächliche Ereignis ab."}</span>
+        </div>
+        <div class="project-linked-event-actions">
+          ${linkedEvent
+            ?`<button class="btn tiny secondary" type="button" data-open-project-event="${p.id}">Termin öffnen</button>
+              <button class="btn tiny ghost" type="button" data-unlink-project-event="${p.id}">Verknüpfung lösen</button>`
+            :`<button class="btn tiny secondary" type="button" data-create-project-event="${p.id}">+ Termin zum Projekt</button>`}
+        </div>
+      </div>
 
       <div class="project-progress-head">
         <span><b>${st.progress}%</b> Gesamtfortschritt</span>
@@ -1282,17 +1751,37 @@ function renderProjects(){
       saveLocal();
     }
   });
+  $$('[data-create-project-event]').forEach(el=>el.onclick=()=>{
+    const p=byId("projects",el.dataset.createProjectEvent);
+    if(p)openEventForProject(p);
+  });
+  $$('[data-open-project-event]').forEach(el=>el.onclick=()=>{
+    const p=byId("projects",el.dataset.openProjectEvent);
+    const e=linkedEventForProject(p);
+    if(e)showEventDetails(e);
+  });
+  $$('[data-unlink-project-event]').forEach(el=>el.onclick=()=>{
+    const p=byId("projects",el.dataset.unlinkProjectEvent);
+    const e=linkedEventForProject(p);
+    if(!p||!e)return;
+    if(!confirm(`Termin „${e.title}“ vom Projekt „${p.name}“ trennen?\n\nProjekt und Termin bleiben beide erhalten.`))return;
+    detachProjectEvent(p,e);
+    saveLocal();
+  });
   $$('[data-edit-project]').forEach(el=>el.onclick=()=>openProjectModal(byId("projects",el.dataset.editProject)));
   $$('[data-archive-project]').forEach(el=>el.onclick=()=>archiveProject(el.dataset.archiveProject));
   $$('[data-delete-project]').forEach(el=>el.onclick=()=>{
     const p=byId("projects",el.dataset.deleteProject);
     if(!p)return;
-    const count=projectTasks(p.id).length;
-    const message=count
-      ?`Projekt „${p.name}“ wirklich löschen?\n\nDie ${count} zugehörigen Aufgabe${count===1?"":"n"} werden nicht gelöscht, sondern zu eigenständigen Aufgaben ohne Projekt.`
-      :`Projekt „${p.name}“ wirklich löschen?`;
+    const count=projectTasks(p.id).length,linkedEvent=linkedEventForProject(p);
+    const details=[
+      count?`Die ${count} zugehörigen Aufgabe${count===1?"":"n"} werden nicht gelöscht, sondern zu eigenständigen Aufgaben ohne Projekt.`:"",
+      linkedEvent?`Der verknüpfte Termin „${linkedEvent.title}“ bleibt erhalten und wird nur vom Projekt getrennt.`:""
+    ].filter(Boolean).join("\n\n");
+    const message=`Projekt „${p.name}“ wirklich löschen?${details?`\n\n${details}`:""}`;
     if(confirm(message)){
       projectTasks(p.id).forEach(t=>{t.projectId="";touch(t)});
+      if(linkedEvent)detachProjectEvent(p,linkedEvent);
       markDeleted("projects",p.id);
       saveLocal();
     }
@@ -1300,13 +1789,89 @@ function renderProjects(){
 }
 $("#projectSearch").addEventListener("input",renderProjects);$("#projectStatusFilter").addEventListener("change",renderProjects);
 
+function kanbanDueRank(task){
+  if(!task?.due)return {bucket:5,date:"9999-12-31",days:99999};
+  const days=daysUntil(task.due);
+  if(days===null)return {bucket:5,date:task.due,days:99999};
+  if(days<0)return {bucket:0,date:task.due,days};
+  if(days===0)return {bucket:1,date:task.due,days};
+  if(days===1)return {bucket:2,date:task.due,days};
+  if(days<=7)return {bucket:3,date:task.due,days};
+  return {bucket:4,date:task.due,days};
+}
+function kanbanTaskCompare(a,b){
+  const da=kanbanDueRank(a),dbb=kanbanDueRank(b);
+  if(da.bucket!==dbb.bucket)return da.bucket-dbb.bucket;
+  if(da.date!==dbb.date)return String(da.date).localeCompare(String(dbb.date));
+  const priorityDiff=taskPriorityRank(b.priority)-taskPriorityRank(a.priority);
+  if(priorityDiff!==0)return priorityDiff;
+  return String(a.title||"").localeCompare(String(b.title||""),"de",{sensitivity:"base"});
+}
+function kanbanDueText(task){
+  if(!task?.due)return "Ohne Termin";
+  const days=daysUntil(task.due);
+  if(days===null)return fmtDate(task.due);
+  if(days<0){
+    const n=Math.abs(days);
+    return n===1?"1 Tag überfällig":`${n} Tage überfällig`;
+  }
+  if(days===0)return "Heute";
+  if(days===1)return "Morgen";
+  if(days<=7)return `in ${days} Tagen`;
+  return fmtDate(task.due);
+}
+function kanbanDueClass(task){
+  if(!task?.due)return "no-date";
+  const days=daysUntil(task.due);
+  if(days===null)return "later";
+  if(days<0)return "overdue";
+  if(days===0)return "today";
+  if(days===1)return "tomorrow";
+  if(days<=7)return "soon";
+  return "later";
+}
 function renderKanban(){
   const cols=[["open","Offen"],["doing","In Arbeit"],["wait","Warten auf"],["done","Erledigt"]];
-  $("#kanbanBoard").innerHTML=cols.map(([s,l])=>`<div class="kanban-col" data-kanban-col="${s}"><h3>${l} · ${activeRows("tasks").filter(t=>t.status===s).length}</h3>${activeRows("tasks").filter(t=>t.status===s).map(t=>`<div class="ticket" draggable="true" data-drag-task="${t.id}"><strong>${esc(t.title)}</strong><small>${esc(projectName(t.projectId))} · ${esc(dueText(t.due))}</small></div>`).join("")}</div>`).join("");
-  $$('[data-drag-task]').forEach(el=>el.addEventListener("dragstart",e=>e.dataTransfer.setData("text/plain",el.dataset.dragTask)));
-  $$('[data-kanban-col]').forEach(col=>{col.addEventListener("dragover",e=>e.preventDefault());col.addEventListener("drop",e=>{e.preventDefault();const t=byId("tasks",e.dataTransfer.getData("text/plain"));if(t){t.status=col.dataset.kanbanCol;touch(t);saveLocal()}})});
-}
 
+  $("#kanbanBoard").innerHTML=cols.map(([status,label])=>{
+    const tasks=activeRows("tasks")
+      .filter(t=>t.status===status)
+      .slice()
+      .sort(kanbanTaskCompare);
+
+    return `<div class="kanban-col" data-kanban-col="${status}">
+      <h3>${label} · ${tasks.length}</h3>
+      ${tasks.map(t=>`<div class="ticket kanban-ticket" draggable="true" data-drag-task="${t.id}">
+        <div class="kanban-ticket-head">
+          <strong>${esc(t.title)}</strong>
+          ${priorityBadge(t.priority)}
+        </div>
+        <small class="kanban-project-line">${esc(projectName(t.projectId))}</small>
+        <div class="kanban-ticket-footer">
+          <span class="kanban-due ${kanbanDueClass(t)}">${esc(kanbanDueText(t))}</span>
+          ${t.due?`<time datetime="${esc(t.due)}">${esc(fmtDate(t.due))}</time>`:""}
+        </div>
+      </div>`).join("")}
+    </div>`;
+  }).join("");
+
+  $$('[data-drag-task]').forEach(el=>el.addEventListener("dragstart",e=>{
+    e.dataTransfer.setData("text/plain",el.dataset.dragTask);
+  }));
+
+  $$('[data-kanban-col]').forEach(col=>{
+    col.addEventListener("dragover",e=>e.preventDefault());
+    col.addEventListener("drop",e=>{
+      e.preventDefault();
+      const t=byId("tasks",e.dataTransfer.getData("text/plain"));
+      if(t){
+        t.status=col.dataset.kanbanCol;
+        touch(t);
+        saveLocal();
+      }
+    });
+  });
+}
 function renderCalendar(){
   const y=calDate.getFullYear(),m=calDate.getMonth();
   $("#calendarTitle").textContent=new Intl.DateTimeFormat("de-DE",{month:"long",year:"numeric"}).format(calDate);
@@ -1358,7 +1923,7 @@ function renderCalendar(){
       .slice(0,1);
     const events=activeRows("events").filter(e=>eventOccursOn(e,ds));
     const tasks=activeRows("tasks").filter(t=>t.due===ds);
-    const projects=activeRows("projects").filter(p=>p.due===ds);
+    const projects=activeRows("projects").filter(p=>projectOccursOn(p,ds));
 
     const workItems=[
       ...events.map(e=>({kind:"event",record:e})),
@@ -1388,8 +1953,10 @@ function renderCalendar(){
             const t=item.record;
             return `<button class="cal-chip cal-work-button cal-task-button ${t.status==="done"?"is-done":""}" type="button" data-calendar-task="${t.id}" title="Aufgabe fällig · ${esc(statusLabel(t.status))}">✓ ${esc(t.title)}</button>`;
           }
-          const p=item.record;
-          return `<button class="cal-chip cal-work-button cal-project-button ${p.status==="closed"?"is-closed":""}" type="button" data-calendar-project="${p.id}" title="Projekt-Zieldatum · ${esc(statusLabel(p.status))}">◆ ${esc(p.name)}</button>`;
+          const p=item.record,start=projectStartDate(p),end=projectEndDate(p),
+                multi=projectIsMultiDay(p),isStart=ds===start,isEnd=ds===end,
+                marker=multi?(isStart?"▶ ":isEnd?"■ ":"↔ "):"";
+          return `<button class="cal-chip cal-work-button cal-project-button ${multi?"multi-day":""} ${p.status==="closed"?"is-closed":""}" type="button" data-calendar-project="${p.id}" title="Projekt · ${esc(projectDateRangeText(p))} · ${esc(statusLabel(p.status))}">${marker}◆ ${esc(p.name)}</button>`;
         }).join("")}
         ${more?`<div class="cal-more">+ ${more} weitere</div>`:""}
       </div>
@@ -1406,7 +1973,7 @@ function renderCalendar(){
   const combined=[
     ...activeRows("events").filter(e=>eventEndDate(e)>=todayStr()).map(e=>({...e,_kind:"event",_sortDate:eventStartDate(e)})),
     ...activeRows("tasks").filter(t=>t.due&&t.due>=todayStr()).map(t=>({...t,_kind:"task",_sortDate:t.due})),
-    ...activeRows("projects").filter(p=>p.due&&p.due>=todayStr()).map(p=>({...p,_kind:"project",_sortDate:p.due})),
+    ...activeRows("projects").filter(p=>projectEndDate(p)&&projectEndDate(p)>=todayStr()).map(p=>({...p,_kind:"project",_sortDate:projectStartDate(p)||projectEndDate(p)})),
     ...upcomingBirthdays(31).map(mem=>({...mem,_kind:"birthday",_sortDate:`9999-${String(mem._days).padStart(4,"0")}`}))
   ].sort((a,b)=>{
     if(a._kind==="birthday"&&b._kind==="birthday")return a._days-b._days;
@@ -1436,32 +2003,111 @@ function eventOverlapsMonth(e,year,monthIndex){
   const monthEnd=`${year}-${String(monthIndex+1).padStart(2,"0")}-${String(lastDay).padStart(2,"0")}`;
   return start<=monthEnd && (end||start)>=monthStart;
 }
+function recurringDateForYear(dateStr,year){
+  if(!dateStr||dateStr.length<10)return "";
+  const mo=Number(dateStr.slice(5,7)),da=Number(dateStr.slice(8,10));
+  if(!mo||!da)return "";
+  const lastDay=new Date(year,mo,0).getDate();
+  return `${year}-${String(mo).padStart(2,"0")}-${String(Math.min(da,lastDay)).padStart(2,"0")}`;
+}
+function yearEntriesForMonth(year,monthIndex){
+  const rows=[];
+  activeRows("events").filter(e=>eventOverlapsMonth(e,year,monthIndex)).forEach(e=>{
+    const start=eventStartDate(e),end=eventEndDate(e)||start;
+    const monthStart=`${year}-${String(monthIndex+1).padStart(2,"0")}-01`;
+    rows.push({kind:"event",id:e.id,date:start<monthStart?monthStart:start,sortDate:start,title:e.title||"Termin",record:e});
+  });
+  activeRows("tasks").filter(t=>t.due&&Number(t.due.slice(0,4))===year&&Number(t.due.slice(5,7))===monthIndex+1).forEach(t=>{
+    rows.push({kind:"task",id:t.id,date:t.due,sortDate:t.due,title:t.title||"Aufgabe",record:t});
+  });
+  activeRows("projects").filter(p=>projectOverlapsMonth(p,year,monthIndex)).forEach(p=>{
+    const start=projectStartDate(p),monthStart=`${year}-${String(monthIndex+1).padStart(2,"0")}-01`;
+    rows.push({kind:"project",id:p.id,date:start<monthStart?monthStart:start,sortDate:start,title:p.name||"Projekt",record:p});
+  });
+  activeRows("members").filter(m=>m.status!=="deceased"&&m.birthDate).forEach(m=>{
+    const date=recurringDateForYear(m.birthDate,year);
+    if(date&&Number(date.slice(5,7))===monthIndex+1){
+      const age=Math.max(0,year-Number(m.birthDate.slice(0,4)));
+      rows.push({kind:"birthday",id:m.id,date,sortDate:date,title:`${memberFullName(m)} · ${age}. Geburtstag`,record:m});
+    }
+  });
+  activeRows("members").filter(m=>m.status!=="deceased"&&m.entryDate).forEach(m=>{
+    const years=year-Number(m.entryDate.slice(0,4));
+    if(years<=0||!isConfiguredJubilee(years))return;
+    const date=recurringDateForYear(m.entryDate,year);
+    if(date&&Number(date.slice(5,7))===monthIndex+1){
+      rows.push({kind:"jubilee",id:m.id,date,sortDate:date,title:`${memberFullName(m)} · ${years} Jahre im Verein`,record:m,years});
+    }
+  });
+  const order={event:0,birthday:1,jubilee:2,task:3,project:4};
+  return rows.sort((a,b)=>String(a.sortDate||a.date).localeCompare(String(b.sortDate||b.date))||(order[a.kind]??9)-(order[b.kind]??9)||String(a.title).localeCompare(String(b.title),"de"));
+}
+function yearEntryHTML(item){
+  if(item.kind==="event"){
+    const e=item.record,color=eventColor(e);
+    return `<button type="button" class="year-item year-event-button" data-year-event="${e.id}" style="--event-color:${color};--event-soft:${colorWithAlpha(color,.12)}">
+      <span class="year-color-dot" style="background:${color}"></span>
+      <b>${esc(eventIsMultiDay(e)?eventDateRangeText(e):fmtShort(eventStartDate(e)))}</b>
+      <span>${esc(e.title)}</span>
+      ${eventTimeRangeText(e)?`<small>${esc(eventTimeRangeText(e))}</small>`:""}
+    </button>`;
+  }
+  const meta={
+    task:{icon:"✓",label:"Aufgabe",cls:"year-task-button"},
+    project:{icon:"◆",label:"Projekt",cls:"year-project-button"},
+    birthday:{icon:"🎂",label:"Geburtstag",cls:"year-birthday-button"},
+    jubilee:{icon:"★",label:"Vereinsjubiläum",cls:"year-jubilee-button"}
+  }[item.kind];
+  const dataAttr=item.kind==="task"?`data-year-task="${item.id}"`:item.kind==="project"?`data-year-project="${item.id}"`:`data-year-member="${item.id}"`;
+  let sub=meta.label;
+  if(item.kind==="task")sub+=` · ${statusLabel(item.record.status)}`;
+  if(item.kind==="project")sub+=` · ${statusLabel(item.record.status)}`;
+  if(item.kind==="birthday")sub+=` · ${Math.max(0,Number(item.date.slice(0,4))-Number(item.record.birthDate.slice(0,4)))} Jahre`;
+  if(item.kind==="jubilee")sub+=` · ${item.years} Jahre`;
+  const dateText=item.kind==="project"
+    ?(projectIsMultiDay(item.record)?projectDateRangeText(item.record):fmtShort(projectStartDate(item.record)))
+    :fmtShort(item.date);
+  return `<button type="button" class="year-item year-special-button ${meta.cls}" ${dataAttr}>
+    <span class="year-type-icon">${meta.icon}</span>
+    <b>${esc(dateText)}</b>
+    <span>${esc(item.title)}</span>
+    <small>${esc(sub)}</small>
+  </button>`;
+}
 function renderYear(){
   const year=calDate.getFullYear();
+  $("#yearTitle").textContent=`Vereinsjahr ${year}`;
   $("#yearGrid").innerHTML=[...Array(12)].map((_,i)=>{
     const name=new Intl.DateTimeFormat("de-DE",{month:"long"}).format(new Date(year,i,1));
-    const ev=activeRows("events")
-      .filter(e=>eventOverlapsMonth(e,year,i))
-      .sort((a,b)=>eventStartDate(a).localeCompare(eventStartDate(b)))
-      .slice(0,10);
+    const entries=yearEntriesForMonth(year,i);
     return `<div class="card month-card">
-      <h3>${name}</h3>
-      ${ev.length?ev.map(e=>{
-        const color=eventColor(e);
-        return `<button type="button" class="year-item year-event-button" data-year-event="${e.id}" style="--event-color:${color};--event-soft:${colorWithAlpha(color,.12)}">
-          <span class="year-color-dot" style="background:${color}"></span>
-          <b>${esc(eventIsMultiDay(e)?eventDateRangeText(e):fmtShort(eventStartDate(e)))}</b>
-          <span>${esc(e.title)}</span>
-          ${eventTimeRangeText(e)?`<small>${esc(eventTimeRangeText(e))}</small>`:""}
-        </button>`;
-      }).join(""):`<div class="mini-meta">Noch keine Einträge</div>`}
+      <div class="year-month-head"><h3>${name}</h3><span class="year-month-count">${entries.length}</span></div>
+      ${entries.length?entries.map(yearEntryHTML).join(""):`<div class="mini-meta">Noch keine Einträge</div>`}
     </div>`;
   }).join("");
-  $$("[data-year-event]").forEach(btn=>btn.onclick=()=>{
+  $$('[data-year-event]').forEach(btn=>btn.onclick=()=>{
     const e=byId("events",btn.dataset.yearEvent);
     if(e)showEventDetails(e);
   });
+  $$('[data-year-task]').forEach(btn=>btn.onclick=()=>{
+    const t=byId("tasks",btn.dataset.yearTask);
+    if(t)openTaskModal(t);
+  });
+  $$('[data-year-project]').forEach(btn=>btn.onclick=()=>{
+    const p=byId("projects",btn.dataset.yearProject);
+    if(p)openProjectModal(p);
+  });
+  $$('[data-year-member]').forEach(btn=>btn.onclick=()=>{
+    const m=byId("members",btn.dataset.yearMember);
+    if(!m)return;
+    selectedMemberId=m.id;
+    renderMembers();
+    go("members");
+  });
 }
+$("#prevYear")?.addEventListener("click",()=>{calDate=new Date(calDate.getFullYear()-1,calDate.getMonth(),1);renderYear()});
+$("#nextYear")?.addEventListener("click",()=>{calDate=new Date(calDate.getFullYear()+1,calDate.getMonth(),1);renderYear()});
+$("#todayYear")?.addEventListener("click",()=>{const d=new Date();calDate=new Date(d.getFullYear(),d.getMonth(),1);renderYear()});
 
 function memberSortValue(m,key){
   if(key==="number"){
@@ -1521,17 +2167,19 @@ function setMemberSort(key,forceDir=null){
   }
   renderMembers();
 }
+function honoraryContributionFree(m){ return !!(m?.honorary && db.settings.honoraryContributionFree); }
 function renderMembers(){
-  const q=($("#memberSearch").value||"").toLowerCase(),f=$("#memberStatusFilter").value;
+  const q=($("#memberSearch").value||"").toLowerCase(),f=$("#memberStatusFilter").value,hf=$("#memberHonoraryFilter")?.value||"";
   const filtered=activeRows("members").filter(m=>
     (!q||`${m.firstName} ${m.lastName} ${m.memberNo}`.toLowerCase().includes(q))&&
-    (!f||m.status===f)
+    (!f||m.status===f)&&
+    (!hf||(hf==="yes"?!!m.honorary:!m.honorary))
   );
   const rows=sortMembers(filtered);
 
   $("#memberTable").innerHTML=rows.length?rows.map(m=>`<tr class="selectable" data-select-member="${m.id}">
     <td>${esc(memberNo(m))}</td>
-    <td><b>${esc(memberFullName(m))}</b></td>
+    <td><b>${esc(memberFullName(m))}</b>${m.honorary?`<div class="mini-meta">★ Ehrenmitglied${honoraryContributionFree(m)?" · beitragsfrei":""}</div>`:""}</td>
     <td>${statusBadge(m.status)}</td>
     <td>${ageAt(m.birthDate)??"—"} · ${ageCategory(m)}</td>
     <td>${esc(effectiveGroupIdsForMember(m).map(groupName).filter(x=>x!=="—").join(", ")||"—")}</td>
@@ -1564,8 +2212,8 @@ function renderMemberDetail(){
   const m=byId("members",selectedMemberId); if(!m){$("#memberDetail").innerHTML='<div class="empty">Mitglied auswählen.</div>';return}
   const groups=effectiveGroupIdsForMember(m).map(groupName).filter(x=>x!=="—"); const histories=[...(m.statusHistory||[]),...(m.history||[])].sort((a,b)=>(b.date||"").localeCompare(a.date||"")).slice(0,6);
   $("#memberDetail").innerHTML=`<div class="member-hero">${memberPhotoHTML(m)}<div><h2>${esc(`${m.firstName||""} ${m.lastName||""}`.trim())}</h2><div class="mini-meta">Mitglied ${esc(memberNo(m))} · ${statusLabel(m.status)} · ${ageCategory(m)}</div></div></div>
-  <div class="member-card-digital"><div class="member-card-top"><div><b>V-Planer Mitgliedskarte</b><div style="font-size:20px;margin-top:8px">${esc(`${m.firstName||""} ${m.lastName||""}`.trim())}</div><small>${esc(groups.join(" · ")||"Gesamtverein")}</small></div><div style="text-align:right"><b>${esc(memberNo(m))}</b><div style="margin-top:8px">${m.honorary?"★ Ehrenmitglied":""}</div></div></div></div>
-  <div class="detail-grid"><div class="detail-box"><b>Geburtstag</b>${fmtDate(m.birthDate)} · ${ageAt(m.birthDate)??"—"} Jahre</div><div class="detail-box"><b>Eintritt</b>${fmtDate(m.entryDate)}${m.entryDate?` · ${jubileeYears(m)} Jahre`:""}</div><div class="detail-box"><b>Kontakt</b>${esc(m.email||"—")}<br>${esc(m.phone||"")}</div><div class="detail-box"><b>Notfallkontakt</b>${esc(m.emergencyName||"—")}<br>${esc(m.emergencyPhone||"")}</div><div class="detail-box"><b>Familie</b>${esc(m.familyName||"—")}</div><div class="detail-box"><b>Gesetzliche Vertretung</b>${esc(m.guardian||"—")}</div></div>
+  <div class="member-card-digital"><div class="member-card-top"><div><b>V-Planer Mitgliedskarte</b><div style="font-size:20px;margin-top:8px">${esc(`${m.firstName||""} ${m.lastName||""}`.trim())}</div><small>${esc(groups.join(" · ")||"Gesamtverein")}</small></div><div style="text-align:right"><b>${esc(memberNo(m))}</b><div style="margin-top:8px">${m.honorary?`★ Ehrenmitglied${honoraryContributionFree(m)?" · beitragsfrei":""}`:""}</div></div></div></div>
+  <div class="detail-grid"><div class="detail-box"><b>Geburtstag</b>${fmtDate(m.birthDate)} · ${ageAt(m.birthDate)??"—"} Jahre</div><div class="detail-box"><b>Eintritt</b>${fmtDate(m.entryDate)}${m.entryDate?` · ${jubileeYears(m)} Jahre`:""}</div><div class="detail-box"><b>Beitragsstatus</b>${honoraryContributionFree(m)?"Beitragsfrei · Ehrenmitglied":"Regulär"}</div><div class="detail-box"><b>Kontakt</b>${esc(m.email||"—")}<br>${esc(m.phone||"")}</div><div class="detail-box"><b>Notfallkontakt</b>${esc(m.emergencyName||"—")}<br>${esc(m.emergencyPhone||"")}</div><div class="detail-box"><b>Familie</b>${esc(m.familyName||"—")}</div><div class="detail-box"><b>Gesetzliche Vertretung</b>${esc(m.guardian||"—")}</div></div>
   <div class="member-actions"><button class="btn tiny secondary" data-edit-member="${m.id}">Bearbeiten</button><button class="btn tiny secondary" data-member-card="${m.id}">Mitgliedskarte</button><button class="btn tiny danger" data-delete-member="${m.id}">Löschen</button></div>
   <h3 style="font-size:14px;margin:18px 0 6px">Historie</h3>${histories.length?`<ul class="history-list">${histories.map(h=>`<li>${fmtDate(h.date)} · ${esc(h.note||h.status||h.type||"")}</li>`).join("")}</ul>`:'<div class="mini-meta">Noch keine Historie.</div>'}
   <h3 style="font-size:14px;margin:18px 0 6px">Zusatzfelder</h3><div class="mini-meta">${(m.extraFields||[]).map(x=>`${esc(x.key)}: ${esc(x.value)}`).join(" · ")||"Keine Zusatzfelder"}</div>`;
@@ -1581,15 +2229,24 @@ function renderMemberDetail(){
     }
   });
 }
-$("#memberSearch").addEventListener("input",renderMembers);$("#memberStatusFilter").addEventListener("change",renderMembers);
+$("#memberSearch").addEventListener("input",renderMembers);$("#memberStatusFilter").addEventListener("change",renderMembers);$("#memberHonoraryFilter")?.addEventListener("change",renderMembers);
 
 
 const euroFmt=new Intl.NumberFormat("de-DE",{style:"currency",currency:"EUR"});
 function fineMoney(value){return euroFmt.format(Number(value)||0)}
 function fineStatusLabel(status){return ({open:"Offen",paid:"Bezahlt",waived:"Erlassen"})[status]||status||"Offen"}
-function fineStatusBadge(status){
-  const cls=status==="paid"?"ok":status==="waived"?"gray":"alarm";
+function fineStatusBadge(status,dueDate=""){
+  if(status==="open"){
+    const overdue=!!dueDate&&dueDate<todayStr();
+    return `<span class="badge alarm">${overdue?"Überfällig · zu bezahlen":"Offen · zu bezahlen"}</span>`;
+  }
+  const cls=status==="paid"?"ok":"gray";
   return `<span class="badge ${cls}">${fineStatusLabel(status)}</span>`;
+}
+function fineCatalog(){return Array.isArray(db.settings.fineCatalog)?db.settings.fineCatalog:[]}
+function fineCatalogOptions(selected=""){
+  const rows=fineCatalog().slice().sort((a,b)=>String(a.label||"").localeCompare(String(b.label||""),"de",{sensitivity:"base"}));
+  return `<option value="">Individuelle Strafe …</option>`+rows.map(x=>`<option value="${esc(x.id)}" ${x.id===selected?"selected":""}>${esc(x.label)} · ${esc(fineMoney(x.amount))}</option>`).join("");
 }
 function fineMemberLabel(f){
   const m=byId("members",f.memberId);
@@ -1637,19 +2294,24 @@ function renderFines(){
   const rows=sortFines(all.filter(f=>(!status||f.status===status)&&(!q||`${fineMemberLabel(f)} ${f.reason||""} ${f.notes||""}`.toLowerCase().includes(q))));
   const open=all.filter(f=>f.status==="open");
   const paidYear=all.filter(f=>f.status==="paid"&&(f.paidDate||"").startsWith(String(new Date().getFullYear())));
-  if($("#fineOpenAmount"))$("#fineOpenAmount").textContent=fineMoney(open.reduce((s,f)=>s+Number(f.amount||0),0));
+  const openAmount=open.reduce((s,f)=>s+Number(f.amount||0),0);
+  if($("#fineOpenAmount"))$("#fineOpenAmount").textContent=fineMoney(openAmount);
   if($("#finePaidYear"))$("#finePaidYear").textContent=fineMoney(paidYear.reduce((s,f)=>s+Number(f.amount||0),0));
   if($("#fineOpenCount"))$("#fineOpenCount").textContent=open.length;
   if($("#fineTotalCount"))$("#fineTotalCount").textContent=all.length;
+  if($("#fineOpenNotice")){
+    $("#fineOpenNotice").hidden=!open.length;
+    $("#fineOpenNotice").innerHTML=open.length?`<strong>⚠ ${open.length} offene ${open.length===1?"Strafe":"Strafen"}</strong><span>${esc(fineMoney(openAmount))} sind noch zu bezahlen.</span>`:"";
+  }
   if(!$("#fineTable"))return;
 
-  $("#fineTable").innerHTML=rows.length?rows.map(f=>`<tr>
+  $("#fineTable").innerHTML=rows.length?rows.map(f=>`<tr class="${f.status==="open"?"fine-row-open":""}">
     <td>${fmtDate(f.date)}</td>
     <td><b>${esc(fineMemberLabel(f))}</b><div class="mini-meta">${esc(f.memberNoSnapshot||"")}</div></td>
     <td><b>${esc(f.reason||"—")}</b>${f.notes?`<div class="fine-note">${esc(f.notes)}</div>`:""}</td>
     <td><b>${esc(fineMoney(f.amount))}</b></td>
     <td>${f.dueDate?fmtDate(f.dueDate):"—"}</td>
-    <td>${fineStatusBadge(f.status)}</td>
+    <td>${fineStatusBadge(f.status,f.dueDate)}</td>
     <td class="fine-actions">
       <button class="action-link" data-edit-fine="${f.id}">Bearbeiten</button>
       ${f.status!=="paid"?`<button class="action-link" data-pay-fine="${f.id}">Bezahlt</button>`:""}
@@ -1666,10 +2328,146 @@ function renderFines(){
   $$("[data-reopen-fine]").forEach(btn=>btn.onclick=()=>{const f=byId("fines",btn.dataset.reopenFine);if(f){f.status="open";f.paidDate="";touch(f);saveLocal();}});
   $$("[data-delete-fine]").forEach(btn=>btn.onclick=()=>{const f=byId("fines",btn.dataset.deleteFine);if(f&&confirm(`Strafe „${f.reason}“ wirklich löschen?`)){markDeleted("fines",f.id);saveLocal();}});
 }
+function renderFineMemberSearch(query=""){
+  const box=$("#fineMemberSearchResults");
+  if(!box)return;
+  const q=String(query||"").trim().toLowerCase();
+  const members=activeRows("members")
+    .filter(m=>!q||`${memberFullName(m)} ${memberNo(m)} ${m.email||""}`.toLowerCase().includes(q))
+    .sort((a,b)=>memberFullName(a).localeCompare(memberFullName(b),"de"))
+    .slice(0,80);
+  box.innerHTML=members.length?members.map(m=>`<button type="button" class="fine-member-result" data-pick-fine-member="${esc(m.id)}"><span><b>${esc(memberFullName(m))}</b><small>${esc(memberNo(m))}${m.email?` · ${esc(m.email)}`:""}</small></span><span>Auswählen</span></button>`).join(""):`<div class="empty compact">Kein passendes Mitglied gefunden.</div>`;
+  $$('[data-pick-fine-member]').forEach(btn=>btn.onclick=()=>{
+    const sel=$("#fineMember"); if(sel)sel.value=btn.dataset.pickFineMember;
+    const panel=$("#fineMemberSearchPanel"); if(panel)panel.hidden=true;
+  });
+}
+function bindFineMemberSearch(){
+  const toggle=$("#fineMemberSearchToggle"),panel=$("#fineMemberSearchPanel"),input=$("#fineMemberSearchInput");
+  if(!toggle||!panel||!input)return;
+  toggle.onclick=()=>{panel.hidden=!panel.hidden;if(!panel.hidden){input.value="";renderFineMemberSearch("");setTimeout(()=>input.focus(),0)}};
+  input.addEventListener("input",()=>renderFineMemberSearch(input.value));
+}
+function fineCatalogUsageCount(catalogId){
+  return activeRows("fines").filter(f=>f.fineCatalogId===catalogId).length;
+}
+function fineCatalogCardHTML(item){
+  const uses=fineCatalogUsageCount(item.id);
+  return `<div class="fine-catalog-card">
+    <div class="fine-catalog-card-main">
+      <div class="fine-catalog-card-head">
+        <b>${esc(item.label)}</b>
+        <strong>${esc(fineMoney(item.amount))}</strong>
+      </div>
+      <small>${uses===0?"Noch nicht vergeben":`${uses}× vergeben`}</small>
+    </div>
+    <div class="fine-catalog-card-actions">
+      <button class="btn tiny secondary" type="button" data-edit-catalog="${esc(item.id)}">Bearbeiten</button>
+      <button class="btn tiny danger" type="button" data-delete-catalog="${esc(item.id)}">Löschen</button>
+    </div>
+  </div>`;
+}
+function renderFineCatalogDialog(){
+  const dlg=$("#detailModal");
+  const rows=fineCatalog().slice().sort((a,b)=>String(a.label||"").localeCompare(String(b.label||""),"de",{sensitivity:"base"}));
+
+  $("#detailTitle").textContent="Strafkatalog";
+  $("#detailBody").innerHTML=`<div class="fine-catalog-overview">
+    <div class="fine-catalog-summary">
+      <div>
+        <b>${rows.length} Strafart${rows.length===1?"":"en"}</b>
+        <span>Alle vorgefertigten Strafen für die schnelle Vergabe an Mitglieder.</span>
+      </div>
+      <button class="btn primary" id="newCatalogFineBtn" type="button">+ Neue Strafe</button>
+    </div>
+    <div class="fine-catalog-overview-list">
+      ${rows.length?rows.map(fineCatalogCardHTML).join(""):`<div class="empty">Noch keine Strafen im Katalog.</div>`}
+    </div>
+  </div>`;
+
+  $("#newCatalogFineBtn").onclick=()=>{
+    dlg.close();
+    openFineCatalogEntryModal();
+  };
+
+  $$("[data-edit-catalog]").forEach(btn=>btn.onclick=()=>{
+    const item=fineCatalog().find(x=>x.id===btn.dataset.editCatalog);
+    if(!item)return;
+    dlg.close();
+    openFineCatalogEntryModal(item);
+  });
+
+  $$("[data-delete-catalog]").forEach(btn=>btn.onclick=()=>{
+    const item=fineCatalog().find(x=>x.id===btn.dataset.deleteCatalog);
+    if(!item)return;
+
+    const uses=fineCatalogUsageCount(item.id);
+    const note=uses
+      ?`\n\nDiese Strafart wurde bereits ${uses}× vergeben. Die bereits vergebenen Strafen bleiben unverändert erhalten.`
+      :"";
+
+    if(!confirm(`„${item.label}“ wirklich aus dem Strafkatalog löschen?${note}`))return;
+
+    db.settings.fineCatalog=fineCatalog().filter(x=>x.id!==item.id);
+    db.settingsUpdatedAt=now();
+    saveLocal();
+    renderFineCatalogDialog();
+  });
+}
+function openFineCatalogModal(){
+  renderFineCatalogDialog();
+  const dlg=$("#detailModal");
+  if(!dlg.open)dlg.showModal();
+}
+function openFineCatalogEntryModal(rec=null){
+  const r=rec||{label:"",amount:""};
+
+  showModal(rec?"Strafe bearbeiten":"Neue Strafe im Strafkatalog",`<div class="form-grid">
+    <label class="full">Bezeichnung<input id="catalogFineLabel" value="${esc(r.label||"")}" placeholder="z. B. Arbeitsdienst versäumt"></label>
+    <label>Betrag (€)<input id="catalogFineAmount" type="number" min="0.01" step="0.01" inputmode="decimal" value="${esc(r.amount||"")}"></label>
+    <div class="form-note full">Dieser Eintrag ist eine Vorlage. Bereits an Mitglieder vergebene Strafen werden bei späteren Änderungen nicht rückwirkend verändert.</div>
+  </div>`,()=>{
+    const label=$("#catalogFineLabel").value.trim();
+    const amount=Number($("#catalogFineAmount").value);
+
+    if(!label){
+      alert("Bitte eine Bezeichnung eintragen.");
+      return false;
+    }
+    if(!(amount>0)){
+      alert("Bitte einen Betrag größer 0 eingeben.");
+      return false;
+    }
+
+    if(rec){
+      const target=fineCatalog().find(x=>x.id===rec.id);
+      if(!target){
+        alert("Der Katalogeintrag ist nicht mehr vorhanden.");
+        return false;
+      }
+      target.label=label;
+      target.amount=Math.round(amount*100)/100;
+    }else{
+      db.settings.fineCatalog.push({
+        id:uid(),
+        label,
+        amount:Math.round(amount*100)/100
+      });
+    }
+
+    db.settingsUpdatedAt=now();
+    saveLocal();
+    setTimeout(()=>openFineCatalogModal(),0);
+    return true;
+  });
+}
+
 function openFineModal(rec=null){
-  const r=rec||{memberId:"",memberNameSnapshot:"",memberNoSnapshot:"",date:todayStr(),dueDate:"",reason:"",amount:"",status:"open",paidDate:"",notes:""};
+  const r=rec||{memberId:"",memberNameSnapshot:"",memberNoSnapshot:"",date:todayStr(),dueDate:"",reason:"",amount:"",status:"open",paidDate:"",notes:"",fineCatalogId:""};
   showModal(rec?"Strafe bearbeiten":"Neue Strafe",`<div class="form-grid">
-    <label class="full">Mitglied<select id="fineMember">${fineMemberOptions(r.memberId,r.memberNameSnapshot)}</select></label>
+    ${!rec?`<label class="full">Strafe aus Katalog<select id="fineCatalogSelect">${fineCatalogOptions(r.fineCatalogId||"")}</select></label>`:""}
+    <label class="full">Mitglied<div class="fine-member-select-row"><select id="fineMember">${fineMemberOptions(r.memberId,r.memberNameSnapshot)}</select><button id="fineMemberSearchToggle" class="btn secondary fine-member-search-btn" type="button" title="Mitglied suchen" aria-label="Mitglied suchen">🔍</button></div></label>
+    <div id="fineMemberSearchPanel" class="fine-member-search-panel full" hidden><div class="search-with-icon"><span>🔍</span><input id="fineMemberSearchInput" type="search" placeholder="Name, Mitgliedsnummer oder E-Mail suchen …"></div><div id="fineMemberSearchResults" class="fine-member-results"></div></div>
     <label>Datum<input id="fineDate" type="date" value="${esc(r.date||todayStr())}"></label>
     <label>Fällig am<input id="fineDue" type="date" value="${esc(r.dueDate||"")}"></label>
     <label class="full">Grund<input id="fineReason" value="${esc(r.reason||"")}" placeholder="z. B. nicht geleisteter Dienst"></label>
@@ -1699,13 +2497,21 @@ function openFineModal(rec=null){
       amount:Math.round(amount*100)/100,
       status,
       paidDate:status==="paid"?($("#finePaidDate").value||todayStr()):"",
-      notes:$("#fineNotes").value.trim()
+      notes:$("#fineNotes").value.trim(),
+      fineCatalogId:$("#fineCatalogSelect")?.value||r.fineCatalogId||""
     });
     touch(target);
     if(!rec)db.fines.push(target);
     saveLocal();
     return true;
   });
+  bindFineMemberSearch();
+  if(!rec&&$("#fineCatalogSelect"))$("#fineCatalogSelect").onchange=e=>{
+    const item=fineCatalog().find(x=>x.id===e.target.value);
+    if(!item)return;
+    $("#fineReason").value=item.label||"";
+    $("#fineAmount").value=Number(item.amount||0).toFixed(2);
+  };
 }
 $("#fineSearch")?.addEventListener("input",renderFines);
 $("#fineStatusFilter")?.addEventListener("change",renderFines);
@@ -1718,6 +2524,7 @@ $$("[data-fine-sort]").forEach(btn=>btn.onclick=()=>{
 $("#fineSortSelect")?.addEventListener("change",e=>{fineSort.key=e.target.value;fineSort.dir="asc";renderFines();});
 $("#fineSortDir")?.addEventListener("click",()=>{fineSort.dir=fineSort.dir==="asc"?"desc":"asc";renderFines();});
 $("#newFineBtn")?.addEventListener("click",()=>openFineModal());
+$("#fineCatalogBtn")?.addEventListener("click",openFineCatalogModal);
 
 function renderGroups(){
   const roots=activeRows("groups").filter(g=>!g.parentId); $("#groupTree").innerHTML=roots.length?roots.map(g=>groupNodeHTML(g,0)).join(""):`<div class="empty">Noch keine Gruppen.</div>`;
@@ -2000,6 +2807,14 @@ function getGroupTypesFromSettingsForm(){
   const names=$$("#groupTypeList .group-type-name").map(el=>el.value.trim()).filter(Boolean);
   return [...new Set(names)];
 }
+function parseJubileeYearsInput(value){
+  return [...new Set(
+    String(value||"")
+      .split(/[,\s;]+/)
+      .map(x=>Number(x.trim()))
+      .filter(n=>Number.isInteger(n)&&n>0&&n<=150)
+  )].sort((a,b)=>a-b);
+}
 function renderSettings(){
   const s=db.settings,r=s.reminders;
   $("#clubName").value=s.clubName||"";
@@ -2018,8 +2833,10 @@ function renderSettings(){
   $("#alarmDaysLabel").textContent=r.alarmDays;
   $("#birthdayWeekReminder").checked=r.birthdayWeek;
   $("#jubileeReminder").checked=r.jubilee;
+  $("#jubileeYearsInput").value=configuredJubileeYears().join(", ");
   $("#storageLimit").value=s.storageLimitGB||5;
   $("#compressImages").checked=!!s.compressImages;
+  $("#honoraryContributionFree").checked=!!s.honoraryContributionFree;
   renderGroupTypeSettings();
   renderCalendarSyncSettings();
 }
@@ -2059,8 +2876,15 @@ $("#saveSettingsBtn").onclick=()=>{
   db.settings.reminders.alarmDays=Number($("#alarmDays").value);
   db.settings.reminders.birthdayWeek=$("#birthdayWeekReminder").checked;
   db.settings.reminders.jubilee=$("#jubileeReminder").checked;
+  const jubileeYears=parseJubileeYearsInput($("#jubileeYearsInput").value);
+  if(db.settings.reminders.jubilee&&!jubileeYears.length){
+    alert("Bitte mindestens ein wichtiges Jubiläumsjahr eintragen, z. B. 10, 20, 25, 30, 40, 50.");
+    return;
+  }
+  db.settings.reminders.jubileeYears=jubileeYears;
   db.settings.storageLimitGB=Number($("#storageLimit").value)||5;
   db.settings.compressImages=$("#compressImages").checked;
+  db.settings.honoraryContributionFree=$("#honoraryContributionFree").checked;
   db.settingsUpdatedAt=now();
   saveLocal();
   applyModuleVisibility();
@@ -2110,6 +2934,86 @@ function renderAll(){ applyModuleVisibility(); renderDashboard();renderTasks();r
 
 function groupOptions(selected="",excludeId=""){return `<option value="">Gesamtverein / keine Gruppe</option>${activeRows("groups").filter(g=>g.id!==excludeId).map(g=>`<option value="${g.id}" ${g.id===selected?"selected":""}>${esc(g.name)}</option>`).join("")}`}
 function projectOptions(selected=""){return `<option value="">Kein Projekt</option>${activeRows("projects").map(p=>`<option value="${p.id}" ${p.id===selected?"selected":""}>${esc(p.name)}</option>`).join("")}`}
+function linkedEventForProject(project){
+  if(!project)return null;
+  if(project.linkedEventId){
+    const direct=recordById("events",project.linkedEventId);
+    if(direct&&!direct.deletedAt)return direct;
+  }
+  return allRows("events").find(e=>!e.deletedAt&&e.projectId===project.id)||null;
+}
+function linkedProjectForEvent(event){
+  if(!event)return null;
+  if(event.projectId){
+    const direct=recordById("projects",event.projectId);
+    if(direct&&!direct.deletedAt)return direct;
+  }
+  return allRows("projects").find(p=>!p.deletedAt&&p.linkedEventId===event.id)||null;
+}
+function eventOptionsForProject(selected="",projectId=""){
+  const rows=activeRows("events").filter(e=>{
+    const linked=linkedProjectForEvent(e);
+    return !linked||linked.id===projectId||e.id===selected;
+  });
+  return `<option value="">Kein Termin verknüpft</option>${rows
+    .slice()
+    .sort((a,b)=>eventStartDate(a).localeCompare(eventStartDate(b))||String(a.title||"").localeCompare(String(b.title||""),"de"))
+    .map(e=>`<option value="${e.id}" ${e.id===selected?"selected":""}>${esc(e.title)} · ${esc(eventDateRangeText(e))}</option>`)
+    .join("")}`;
+}
+function projectOptionsForEvent(selected="",eventId=""){
+  const rows=activeRows("projects").filter(p=>{
+    const linked=linkedEventForProject(p);
+    return !linked||linked.id===eventId||p.id===selected;
+  });
+  return `<option value="">Kein Projekt verknüpft</option>${rows
+    .slice()
+    .sort((a,b)=>String(a.name||"").localeCompare(String(b.name||""),"de"))
+    .map(p=>`<option value="${p.id}" ${p.id===selected?"selected":""}>${esc(p.name)} · ${esc(projectDateRangeText(p))}</option>`)
+    .join("")}`;
+}
+function detachProjectEvent(project,event){
+  if(project&&project.linkedEventId===event?.id){
+    delete project.linkedEventId;
+    touch(project);
+  }
+  if(event&&event.projectId===project?.id){
+    delete event.projectId;
+    touch(event);
+  }
+}
+function linkProjectEvent(project,event){
+  if(!project||!event)return;
+  const oldEvent=linkedEventForProject(project);
+  if(oldEvent&&oldEvent.id!==event.id)detachProjectEvent(project,oldEvent);
+  const oldProject=linkedProjectForEvent(event);
+  if(oldProject&&oldProject.id!==project.id)detachProjectEvent(oldProject,event);
+  project.linkedEventId=event.id;
+  event.projectId=project.id;
+  touch(project);
+  touch(event);
+}
+function projectEventSummary(event){
+  if(!event)return "";
+  const range=eventDateRangeText(event),time=eventTimeRangeText(event);
+  return `${range}${time?` · ${time}`:""}${event.location?` · ${event.location}`:""}`;
+}
+function openEventForProject(project){
+  if(!project)return;
+  const event=linkedEventForProject(project);
+  if(event){
+    showEventDetails(event);
+    return;
+  }
+  const eventDate=projectEndDate(project)||projectStartDate(project)||todayStr();
+  openEventModal(null,project.id,{
+    title:project.name||"",
+    startDate:eventDate,
+    endDate:eventDate,
+    groupId:project.groupId||"",
+    description:project.description||""
+  });
+}
 function memberOptions(selected=""){return `<option value="">Nicht besetzt</option>${activeRows("members").map(m=>`<option value="${m.id}" ${m.id===selected?"selected":""}>${esc(memberFullName(m))}</option>`).join("")}`}
 function showModal(title,body,saveFn){ $("#modalTitle").textContent=title;$("#modalBody").innerHTML=body;const dlg=$("#modal");dlg.showModal();$("#modalSave").onclick=e=>{e.preventDefault();Promise.resolve(saveFn()).then(ok=>{if(ok!==false)dlg.close()})}; }
 function readPhoto(fileInput,current=""){ const f=fileInput.files?.[0]; if(!f)return Promise.resolve(current); return new Promise((resolve,reject)=>{const img=new Image(),fr=new FileReader();fr.onload=()=>{img.onload=()=>{const max=320,s=Math.min(1,max/Math.max(img.width,img.height)),c=document.createElement("canvas");c.width=Math.round(img.width*s);c.height=Math.round(img.height*s);c.getContext("2d").drawImage(img,0,0,c.width,c.height);resolve(c.toDataURL("image/jpeg",.72))};img.onerror=reject;img.src=fr.result};fr.onerror=reject;fr.readAsDataURL(f)}); }
@@ -2195,34 +3099,74 @@ function openTaskModal(rec=null,presetProjectId=""){
 }
 
 function openProjectModal(rec=null){
-  const r=rec||{name:"",due:"",status:"planned",groupId:"",description:""};
+  const r=rec||{name:"",startDate:"",endDate:"",due:"",status:"planned",groupId:"",description:"",linkedEventId:""};
   const stats=rec?projectTaskStats(rec.id):{total:0,done:0,progress:0};
+  const startDate=projectStartDate(r),endDate=projectEndDate(r)||startDate;
+  const currentLinked=rec?linkedEventForProject(rec):null;
+
   showModal(rec?"Projekt bearbeiten":"Neues Projekt",`<div class="form-grid">
     <label class="full">Projektname<input id="fName" value="${esc(r.name)}"></label>
-    <label>Zieldatum<input id="fDue" type="date" value="${esc(r.due||"")}"></label>
+
+    <div class="form-section">Organisationszeitraum</div>
+    <label>Projektbeginn<input id="fProjectStartDate" type="date" value="${esc(startDate)}"></label>
+    <label>Projektende<input id="fProjectEndDate" type="date" value="${esc(endDate)}"></label>
+
     <label>Status<select id="fStatus">${["planned","active","paused","closed"].map(s=>`<option value="${s}" ${r.status===s?"selected":""}>${statusLabel(s)}</option>`).join("")}</select></label>
     <label>Gruppe<select id="fGroup">${groupOptions(r.groupId)}</select></label>
+
+    ${rec?`<label class="full">Zugehöriger Termin
+      <select id="fProjectEvent">${eventOptionsForProject(currentLinked?.id||"",r.id)}</select>
+      <small class="field-help">Projekt = Organisation und Aufgaben. Termin = das tatsächliche Ereignis mit Datum, Uhrzeit und Ort.</small>
+    </label>`:`<div class="form-note full">Nach dem Speichern kannst du direkt einen Termin zum Projekt anlegen. Dieser bildet das tatsächliche Ereignis ab.</div>`}
+
     ${rec?`<div class="project-modal-progress full"><b>Automatischer Fortschritt: ${stats.progress}%</b><span>${stats.done} von ${stats.total} Aufgaben erledigt</span><div class="progress"><span style="width:${stats.progress}%"></span></div></div>`:`<div class="form-note full">Der Projektfortschritt wird automatisch aus den später angelegten Projektaufgaben berechnet. Jede erledigte Aufgabe zählt gleich stark.</div>`}
+
     <label class="full">Beschreibung<textarea id="fDescription" rows="5">${esc(r.description||"")}</textarea></label>
+    <div class="form-note full">Der Projektzeitraum beschreibt die Organisations- und Arbeitsphase. Der tatsächliche Veranstaltungstermin kann separat mit Uhrzeit und Ort verknüpft werden.</div>
   </div>`,()=>{
-    const name=$("#fName").value.trim();if(!name)return false;
+    const name=$("#fName").value.trim();
+    if(!name)return false;
+
+    let start=$("#fProjectStartDate").value;
+    let end=$("#fProjectEndDate").value;
+    if(!start&&end)start=end;
+    if(start&&!end)end=start;
+
+    if(start&&end&&end<start){
+      alert("Das Projektende darf nicht vor dem Projektbeginn liegen.");
+      return false;
+    }
+
     const target=rec||{id:uid(),createdAt:now()};
+    const previousLinked=rec?linkedEventForProject(rec):null;
+
     Object.assign(target,{
       name,
-      due:$("#fDue").value,
+      startDate:start,
+      endDate:end,
+      due:end||start||"",
       status:$("#fStatus").value,
       groupId:$("#fGroup").value,
       description:$("#fDescription").value
     });
     touch(target);
     if(!rec)db.projects.push(target);
+
+    if(rec){
+      const selectedEventId=$("#fProjectEvent").value;
+      const selectedEvent=selectedEventId?recordById("events",selectedEventId):null;
+      if(previousLinked&&previousLinked.id!==selectedEventId)detachProjectEvent(target,previousLinked);
+      if(selectedEvent)linkProjectEvent(target,selectedEvent);
+      if(!selectedEventId)delete target.linkedEventId;
+    }
+
     saveLocal();
     return true;
   });
 }
-
 function showEventDetails(e){
-  const dlg=$("#detailModal"),color=eventColor(e),range=eventDateRangeText(e),time=eventTimeRangeText(e);
+  const dlg=$("#detailModal"),color=eventColor(e),range=eventDateRangeText(e),time=eventTimeRangeText(e),
+        linkedProject=linkedProjectForEvent(e);
   $("#detailTitle").textContent=e.title||"Termin";
   $("#detailBody").innerHTML=`<div class="event-detail">
     <div class="event-detail-accent" style="background:${color}"></div>
@@ -2234,9 +3178,14 @@ function showEventDetails(e){
       <div class="detail-box"><b>Von – Uhrzeit</b>${esc(eventStartTime(e)?`${eventStartTime(e)} Uhr`:"—")}</div>
       <div class="detail-box"><b>Bis – Uhrzeit</b>${esc(eventEndTime(e)?`${eventEndTime(e)} Uhr`:"—")}</div>
       <div class="detail-box full-detail"><b>Ort</b>${esc(e.location||"—")}</div>
+      ${e.description?`<div class="detail-box full-detail"><b>Beschreibung / Hinweise</b>${esc(e.description)}</div>`:""}
     </div>
+    ${linkedProject?`<div class="event-project-link">
+      <div><b>Gehört zu Projekt</b><span>${esc(linkedProject.name)} · ${esc(projectDateRangeText(linkedProject))}</span></div>
+      <button class="btn tiny secondary" type="button" id="detailOpenProject">Projekt öffnen</button>
+    </div>`:""}
     <div class="event-detail-summary">
-      <b>Gesamtzeitraum</b>
+      <b>Terminzeitraum</b>
       <span>${esc(range)}${time?` · ${esc(time)}`:""}</span>
     </div>
     <div class="event-detail-color"><span style="background:${color}"></span><b>Terminfarbe</b><code>${esc(color.toUpperCase())}</code></div>
@@ -2247,25 +3196,50 @@ function showEventDetails(e){
   </div>`;
   dlg.showModal();
 
+  $("#detailOpenProject")?.addEventListener("click",()=>{
+    dlg.close();
+    const current=recordById("projects",linkedProject?.id);
+    if(!current)return;
+    if(current.archivedAt){go("archive");return;}
+    go("projects");
+    setTimeout(()=>document.querySelector(`[data-edit-project="${CSS.escape(current.id)}"]`)?.scrollIntoView({behavior:"smooth",block:"center"}),50);
+  });
+
   $("#detailEditEvent").onclick=()=>{
     const current=recordById("events",e.id);
     dlg.close();
     if(current)openEventModal(current);
     else alert("Der Termin ist im aktuellen Datenstand nicht mehr vorhanden.");
   };
+
   $("#detailDeleteEvent").onclick=()=>{
-    if(!confirm(`Termin „${e.title}“ wirklich löschen?\n\nDer Termin wird aus Kalender und Vereinsjahr entfernt.`))return;
+    const linked=linkedProjectForEvent(e);
+    const extra=linked?`\n\nDie Verknüpfung zum Projekt „${linked.name}“ wird gelöst. Das Projekt selbst bleibt erhalten.`:"";
+    if(!confirm(`Termin „${e.title}“ wirklich löschen?\n\nDer Termin wird aus Kalender und Vereinsjahr entfernt.${extra}`))return;
+    if(linked)detachProjectEvent(linked,e);
     markDeleted("events",e.id);
     dlg.close();
     saveLocal();
   };
 }
-
-function openEventModal(rec=null){
+function openEventModal(rec=null,presetProjectId="",preset={}){
   const eventId=rec?.id||"";
-  const r=(eventId?recordById("events",eventId):null)||rec||{title:"",startDate:"",endDate:"",startTime:"",endTime:"",location:"",groupId:"",color:"#1677c8"};
+  const linkedProject=rec?linkedProjectForEvent(rec):(presetProjectId?recordById("projects",presetProjectId):null);
+  const r=(eventId?recordById("events",eventId):null)||rec||{
+    title:preset.title||linkedProject?.name||"",
+    startDate:preset.startDate||"",
+    endDate:preset.endDate||preset.startDate||"",
+    startTime:"",
+    endTime:"",
+    location:"",
+    groupId:preset.groupId||linkedProject?.groupId||"",
+    projectId:presetProjectId||"",
+    description:preset.description||linkedProject?.description||"",
+    color:"#1677c8"
+  };
   const startDate=eventStartDate(r),endDate=eventEndDate(r)||startDate,startTime=eventStartTime(r),endTime=eventEndTime(r);
   const currentColor=eventColor(r);
+  const currentProject=linkedProjectForEvent(r)||linkedProject;
   const palette=[
     {name:"Blau",value:"#1677c8"},
     {name:"Grün",value:"#2f9628"},
@@ -2279,10 +3253,12 @@ function openEventModal(rec=null){
     {name:"Grau",value:"#667085"}
   ];
 
-  showModal(rec?"Termin bearbeiten":"Neuer Termin",`<div class="form-grid">
+  showModal(rec?"Termin bearbeiten":presetProjectId?"Termin zum Projekt anlegen":"Neuer Termin",`<div class="form-grid">
+    ${presetProjectId?`<div class="form-note full">Dieser Termin wird mit dem Projekt <b>${esc(linkedProject?.name||"")}</b> verknüpft. Projekt und Termin bleiben getrennte Datensätze.</div>`:""}
+
     <label class="full">Titel<input id="fTitle" value="${esc(r.title)}"></label>
 
-    <div class="form-section">Zeitraum</div>
+    <div class="form-section">Terminzeitraum</div>
     <label>Von – Datum<input id="fStartDate" type="date" value="${esc(startDate)}"></label>
     <label>Bis – Datum<input id="fEndDate" type="date" value="${esc(endDate)}"></label>
     <label>Von – Uhrzeit<input id="fStartTime" type="time" value="${esc(startTime)}"></label>
@@ -2290,6 +3266,13 @@ function openEventModal(rec=null){
 
     <label>Ort<input id="fLocation" value="${esc(r.location||"")}"></label>
     <label>Gruppe<select id="fGroup">${groupOptions(r.groupId)}</select></label>
+
+    <label class="full">Zugehöriges Projekt
+      <select id="fEventProject" ${presetProjectId?"disabled":""}>${projectOptionsForEvent(currentProject?.id||presetProjectId,eventId)}</select>
+      <small class="field-help">Optional. So bleibt sichtbar, welches Projekt diesen Termin organisiert.</small>
+    </label>
+
+    <label class="full">Beschreibung / Hinweise<textarea id="fEventDescription" rows="4">${esc(r.description||"")}</textarea></label>
 
     <div class="form-section">Terminfarbe</div>
     <label>Freie Farbe<input id="fColor" class="event-color-input" type="color" value="${currentColor}"></label>
@@ -2305,7 +3288,7 @@ function openEventModal(rec=null){
       </div>
     </div>
 
-    <div class="form-note full">Für eintägige Termine bei „Von“ und „Bis“ dasselbe Datum wählen. Mehrtägige Termine werden im Kalender an jedem betroffenen Tag und im Vereinsjahr in allen betroffenen Monaten angezeigt.</div>
+    <div class="form-note full">Termin = tatsächliches Ereignis mit Datum, Uhrzeit und Ort. Projekt = Organisationszeitraum, Aufgaben und Fortschritt.</div>
   </div>`,()=>{
     const title=$("#fTitle").value.trim();
     const sd=$("#fStartDate").value,ed=$("#fEndDate").value||sd;
@@ -2317,16 +3300,17 @@ function openEventModal(rec=null){
     if(ed<sd){alert("Das Bis-Datum darf nicht vor dem Von-Datum liegen.");return false}
     if(sd===ed&&st&&et&&et<st){alert("Bei einem eintägigen Termin darf die Bis-Uhrzeit nicht vor der Von-Uhrzeit liegen.");return false}
 
-    // Important: resolve the current record by ID at save time.
-    // Drive sync may have replaced `db` while this dialog was open.
     let target=eventId?recordById("events",eventId):null;
     const isNew=!eventId;
-
     if(eventId&&!target){
       alert("Der Termin konnte nicht gespeichert werden, weil er im aktuellen Datenstand nicht mehr vorhanden ist.");
       return false;
     }
     if(isNew)target={id:uid(),createdAt:now()};
+
+    const previousProject=eventId?linkedProjectForEvent(target):null;
+    const selectedProjectId=presetProjectId||$("#fEventProject").value;
+    const selectedProject=selectedProjectId?recordById("projects",selectedProjectId):null;
 
     Object.assign(target,{
       title,
@@ -2334,23 +3318,22 @@ function openEventModal(rec=null){
       endDate:ed,
       startTime:st,
       endTime:et,
-      // Legacy fields retained for older saved data/views.
       date:sd,
       time:st,
       location:$("#fLocation").value,
       groupId:$("#fGroup").value,
+      description:$("#fEventDescription").value.trim(),
       color
     });
-
-    // Guarantee a fresh modification timestamp after all field changes.
     target.updatedAt=now();
-
     if(isNew)db.events.push(target);
 
-    // Persist first, then all event views are rebuilt from the same current record.
+    if(previousProject&&previousProject.id!==selectedProjectId)detachProjectEvent(previousProject,target);
+    if(selectedProject)linkProjectEvent(selectedProject,target);
+    if(!selectedProjectId)delete target.projectId;
+
     saveLocal();
 
-    // Defensive verification: the saved current record must contain the edited values.
     const saved=recordById("events",target.id);
     if(!saved||saved.title!==title||eventStartDate(saved)!==sd||eventEndDate(saved)!==ed){
       alert("Der Termin konnte nicht vollständig aktualisiert werden. Bitte erneut versuchen.");
@@ -2371,7 +3354,6 @@ function openEventModal(rec=null){
     updateColorUI(colorInput.value);
   });
 }
-
 function openMemberModal(rec=null){
   const r=rec||{memberNo:nextAvailableMemberNo(),firstName:"",lastName:"",birthDate:"",status:"active",entryDate:todayStr(),exitDate:"",reentryDate:"",cancelDate:"",deceasedDate:"",honorary:false,email:"",phone:"",address:"",emergencyName:"",emergencyPhone:"",guardian:"",familyName:"",relationships:"",groupIds:[],photoData:"",extraFields:[],history:[],statusHistory:[],honors:[],notes:""};
   const extra=(r.extraFields||[]).map(x=>`${x.key}=${x.value}`).join("\n"), hist=(r.history||[]).map(x=>`${x.date||""}|${x.note||""}`).join("\n"), shist=(r.statusHistory||[]).map(x=>`${x.date||""}|${x.note||x.status||""}`).join("\n"), honors=(r.honors||[]).map(x=>`${x.title||""}|${x.date||""}`).join("\n");
@@ -2379,6 +3361,7 @@ function openMemberModal(rec=null){
     <div class="form-section">Stammdaten</div>
     <label>Mitgliedsnummer<input id="mNo" value="${esc(r.memberNo)}"><small class="field-help">Automatisch wird die kleinste freie Nummer vorgeschlagen. Freie Nummern können auch manuell vergeben werden.</small></label><label>Status<select id="mStatus"><option value="active" ${r.status==="active"?"selected":""}>Aktiv</option><option value="inactive" ${r.status==="inactive"?"selected":""}>Deaktiviert</option><option value="passive" ${r.status==="passive"?"selected":""}>Passiv</option><option value="deceased" ${r.status==="deceased"?"selected":""}>Verstorben</option></select></label>
     <label>Vorname<input id="mFirst" value="${esc(r.firstName)}"></label><label>Nachname<input id="mLast" value="${esc(r.lastName)}"></label><label>Geburtsdatum<input id="mBirth" type="date" value="${esc(r.birthDate||"")}"></label><label class="checkline"><input id="mHonorary" type="checkbox" ${r.honorary?"checked":""}> Ehrenmitglied</label>
+    <div class="form-note full">${db.settings.honoraryContributionFree?"Ehrenmitglieder werden gemäß Einstellung automatisch als beitragsfrei gekennzeichnet.":"Ehrenmitglied ist eine Kennzeichnung. Eine automatische Beitragsfreiheit ist derzeit in den Einstellungen deaktiviert."}</div>
     <label class="full">Mitgliedsfoto<input id="mPhoto" type="file" accept="image/*"></label>
     <div class="form-section">Mitgliedschaft & Historie</div>
     <label>Eintritt<input id="mEntry" type="date" value="${esc(r.entryDate||"")}"></label><label>Austritt<input id="mExit" type="date" value="${esc(r.exitDate||"")}"></label><label>Wiedereintritt<input id="mReentry" type="date" value="${esc(r.reentryDate||"")}"></label><label>Kündigungsdatum<input id="mCancel" type="date" value="${esc(r.cancelDate||"")}"></label><label>Sterbedatum<input id="mDeceased" type="date" value="${esc(r.deceasedDate||"")}"></label><label>Altersgruppe<input disabled value="wird automatisch berechnet"></label>
@@ -2437,7 +3420,7 @@ function openMemberModal(rec=null){
     return true;
   });
 }
-function showMemberCard(m){ $("#detailTitle").textContent="Digitale Mitgliedskarte";$("#detailBody").innerHTML=`<div style="max-width:520px;margin:auto"><div class="member-card-digital" style="padding:24px"><div class="member-card-top"><div><b>V-Planer · ${esc(db.settings.clubName)}</b><div style="font-size:28px;margin-top:16px">${esc(`${m.firstName||""} ${m.lastName||""}`.trim())}</div><small>${esc(effectiveGroupIdsForMember(m).map(groupName).filter(x=>x!=="—").join(" · ")||"Gesamtverein")}</small></div><div style="text-align:right"><b style="font-size:22px">${esc(memberNo(m))}</b><div style="margin-top:15px">${m.honorary?"★ Ehrenmitglied":""}</div></div></div></div></div>`;$("#detailModal").showModal(); }
+function showMemberCard(m){ $("#detailTitle").textContent="Digitale Mitgliedskarte";$("#detailBody").innerHTML=`<div style="max-width:520px;margin:auto"><div class="member-card-digital" style="padding:24px"><div class="member-card-top"><div><b>V-Planer · ${esc(db.settings.clubName)}</b><div style="font-size:28px;margin-top:16px">${esc(`${m.firstName||""} ${m.lastName||""}`.trim())}</div><small>${esc(effectiveGroupIdsForMember(m).map(groupName).filter(x=>x!=="—").join(" · ")||"Gesamtverein")}</small></div><div style="text-align:right"><b style="font-size:22px">${esc(memberNo(m))}</b><div style="margin-top:15px">${m.honorary?`★ Ehrenmitglied${honoraryContributionFree(m)?" · beitragsfrei":""}`:""}</div></div></div></div></div>`;$("#detailModal").showModal(); }
 
 function configuredGroupTypes(currentType=""){
   const configured=(Array.isArray(db.settings.groupTypes)?db.settings.groupTypes:[])
@@ -2721,7 +3704,7 @@ async function syncDriveFolderNames(){
   for(const folder of activeRows("folders").filter(f=>f.driveFolderId&&f.driveNamePending)){try{await syncOneDriveFolderName(folder)}catch{}}
 }
 async function compressImage(file){ if(!db.settings.compressImages||!file.type.startsWith("image/"))return file;const img=await createImageBitmap(file),max=1600,scale=Math.min(1,max/Math.max(img.width,img.height)),canvas=document.createElement("canvas");canvas.width=Math.round(img.width*scale);canvas.height=Math.round(img.height*scale);canvas.getContext("2d").drawImage(img,0,0,canvas.width,canvas.height);const blob=await new Promise(r=>canvas.toBlob(r,"image/jpeg",.76));return new File([blob],file.name.replace(/\.[^.]+$/,"")+".jpg",{type:"image/jpeg"}); }
-async function uploadAreaFile(file,area,folderId="",category=""){
+async function uploadAreaFile(file,area,folderId="",category="",opts={}){
   if(!hasUsableAccessToken())await ensureDriveAccess();
   const f=await compressImage(file),current=estimateLocalBytes()+activeRows("documents").reduce((s,d)=>s+(d.size||0),0),limit=(db.settings.storageLimitGB||5)*1024**3;
   if(current+f.size>limit)throw new Error("Eigenes Speicherlimit würde überschritten.");
@@ -2730,17 +3713,45 @@ async function uploadAreaFile(file,area,folderId="",category=""){
         body=new Blob([`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${boundary}\r\nContent-Type: ${f.type||"application/octet-stream"}\r\n\r\n`,f,`\r\n--${boundary}--`]);
   const j=await (await driveFetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,size,createdTime,webViewLink,mimeType,parents",{method:"POST",headers:{"Content-Type":`multipart/related; boundary=${boundary}`},body})).json();
   db.documents.unshift({id:j.id,name:j.name,size:Number(j.size)||f.size,area,folderId:folderId||"",category:category||"",mimeType:j.mimeType||f.type||"",createdAt:j.createdTime||now(),webViewLink:j.webViewLink||"",updatedAt:now()});
-  saveLocal();
+  if(!opts.deferSave)saveLocal();
+  return j;
 }
-async function moveStoredFile(doc,targetFolderId){
-  const area=doc.area||"documents";
-  if(!hasUsableAccessToken())await ensureDriveAccess();
-  const newParent=await ensureDriveFolderForLogicalFolder(area,targetFolderId||"");
-  const info=await (await driveFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(doc.id)}?fields=parents`)).json();
-  const oldParents=(info.parents||[]).filter(Boolean),params=new URLSearchParams({addParents:newParent,fields:"id,parents"});
-  if(oldParents.length)params.set("removeParents",oldParents.join(","));
-  await driveFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(doc.id)}?${params.toString()}`,{method:"PATCH"});
-  doc.area=area;doc.folderId=targetFolderId||"";touch(doc);selectedFolderByArea[area]=doc.folderId;saveLocal();
+function folderUploadStatusElement(area){
+  const id={meetings:"meetingFolderUploadStatus",documents:"documentFolderUploadStatus",knowledge:"knowledgeFolderUploadStatus"}[area];
+  return id?$("#"+id):null;
+}
+function setFolderUploadStatus(area,text,state=""){
+  const el=folderUploadStatusElement(area);if(!el)return;
+  el.textContent=text||"";
+  el.className=`folder-upload-status${state?` is-${state}`:""}`;
+}
+function findLogicalChildFolder(area,parentId,name){
+  const lower=String(name||"").trim().toLocaleLowerCase("de-DE");
+  return folderChildren(area,parentId||"").find(f=>String(f.name||"").trim().toLocaleLowerCase("de-DE")===lower)||null;
+}
+async function ensureLogicalFolderPath(area,baseFolderId,segments){
+  let parentId=baseFolderId||"";
+  for(const raw of segments){
+    const name=String(raw||"").trim();
+    if(!name||name==="."||name==="..")continue;
+    let folder=findLogicalChildFolder(area,parentId,name);
+    if(!folder){
+      folder={id:uid(),area,name,parentId,driveFolderId:"",createdAt:now(),updatedAt:now()};
+      db.folders.push(folder);
+    }
+    await ensureDriveFolderForLogicalFolder(area,folder.id);
+    parentId=folder.id;
+  }
+  return parentId;
+}
+function folderRelativeParts(file){
+  const relative=String(file.webkitRelativePath||file.name||"").replace(/\\/g,"/").split("/").filter(Boolean);
+  if(relative.length<=1)return {folders:[],name:file.name};
+  return {folders:relative.slice(0,-1),name:relative.at(-1)||file.name};
+}
+function findAreaFileByName(area,folderId,name){
+  const lower=String(name||"").toLocaleLowerCase("de-DE");
+  return areaDocs(area).find(d=>(d.folderId||"")===(folderId||"")&&String(d.name||"").toLocaleLowerCase("de-DE")===lower)||null;
 }
 async function handleAreaUpload(area,inputId,categoryId=""){
   const input=$("#"+inputId),files=[...(input.files||[])];
@@ -2752,9 +3763,51 @@ async function handleAreaUpload(area,inputId,categoryId=""){
     alert(`${files.length} Datei${files.length===1?"":"en"} erfolgreich hochgeladen.`);
   }catch(e){alert(e.message)}
 }
+async function handleAreaFolderUpload(area,inputId,categoryId=""){
+  const input=$("#"+inputId),files=[...(input.files||[])];
+  if(!files.length)return;
+  const baseFolderId=currentFolderId(area),category=categoryId?$("#"+categoryId).value:"";
+  let uploaded=0,skipped=0,failed=0;
+  try{
+    if(!hasUsableAccessToken())await ensureDriveAccess();
+    setFolderUploadStatus(area,`Ordner-Upload wird vorbereitet · ${files.length} Datei${files.length===1?"":"en"} …`,"working");
+    for(let i=0;i<files.length;i++){
+      const file=files[i],rel=folderRelativeParts(file);
+      setFolderUploadStatus(area,`${i+1}/${files.length} · ${rel.folders.concat(rel.name).join(" / ")}`,"working");
+      try{
+        const targetFolderId=await ensureLogicalFolderPath(area,baseFolderId,rel.folders);
+        const existing=findAreaFileByName(area,targetFolderId,file.name);
+        if(existing){
+          const sameSize=Number(existing.size||0)===Number(file.size||0);
+          const uploadAnyway=confirm(`Die Datei „${file.name}“ ist im Zielordner bereits vorhanden${sameSize?" und hat dieselbe Größe":""}.\n\nTrotzdem eine weitere Datei mit diesem Namen hochladen?`);
+          if(!uploadAnyway){skipped++;continue;}
+        }
+        await uploadAreaFile(file,area,targetFolderId,category,{deferSave:true});
+        uploaded++;
+      }catch(e){
+        failed++;
+        console.error("Ordner-Upload:",file.webkitRelativePath||file.name,e);
+      }
+    }
+    input.value="";
+    saveLocal();
+    const summary=`${uploaded} hochgeladen${skipped?` · ${skipped} übersprungen`:""}${failed?` · ${failed} fehlgeschlagen`:""}`;
+    setFolderUploadStatus(area,`Ordner-Upload abgeschlossen · ${summary}`,failed?"error":"ok");
+    if(failed)alert(`Ordner-Upload abgeschlossen.\n\n${summary}\n\nDetails zu fehlgeschlagenen Dateien stehen in der Browser-Konsole.`);
+  }catch(e){
+    setFolderUploadStatus(area,`Ordner-Upload fehlgeschlagen: ${e.message}`,"error");
+    alert(e.message);
+  }
+}
 $("#uploadBtn").onclick=()=>handleAreaUpload("documents","fileInput","docCategory");
 $("#meetingUploadBtn").onclick=()=>handleAreaUpload("meetings","meetingFileInput");
 $("#knowledgeUploadBtn").onclick=()=>handleAreaUpload("knowledge","knowledgeFileInput");
+$("#documentFolderUploadBtn").onclick=()=>$("#documentFolderInput").click();
+$("#meetingFolderUploadBtn").onclick=()=>$("#meetingFolderInput").click();
+$("#knowledgeFolderUploadBtn").onclick=()=>$("#knowledgeFolderInput").click();
+$("#documentFolderInput").onchange=()=>handleAreaFolderUpload("documents","documentFolderInput","docCategory");
+$("#meetingFolderInput").onchange=()=>handleAreaFolderUpload("meetings","meetingFolderInput");
+$("#knowledgeFolderInput").onchange=()=>handleAreaFolderUpload("knowledge","knowledgeFolderInput");
 
 applyUiScale();
 

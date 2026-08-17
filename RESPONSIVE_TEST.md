@@ -77,3 +77,45 @@ Wichtige mobile Anpassungen:
 - Aufgabe/Projekt archivieren und beim nächsten Sync das Entfernen aus Google Kalender prüfen.
 - Browser neu laden: anschließend „Erneut verbinden & synchronisieren“ prüfen.
 - Smartphone: Google-Kalender-App öffnen und Sichtbarkeit des Kalenders „V-Planer“ prüfen.
+
+## Mehrtägige Projekte testen
+- Neues Projekt mit gleichem Von-/Bis-Datum anlegen: nur an diesem Tag im Kalender sichtbar.
+- Projekt über mehrere Tage anlegen: an jedem betroffenen Kalendertag sichtbar.
+- Projekt über Monatsgrenze anlegen: in beiden Monaten im Vereinsjahr sichtbar.
+- Projekt bearbeiten und Zeitraum verkürzen/verlängern.
+- Bestehendes altes Projekt mit nur Zieldatum öffnen: Von und Bis müssen mit dem bisherigen Datum vorbelegt sein.
+- Google-Kalender-Sync aktivieren und prüfen, dass das Projekt als ganztägiger Zeitraum übertragen wird.
+- Projekt archivieren/wiederherstellen und Zeitraum im Archiv prüfen.
+
+## Geburtstage & Jubiläen
+- Mehrere Geburtstage und Jubiläen mit unterschiedlichen Abständen anlegen.
+- Prüfen, dass die Dashboard-Liste unabhängig vom Typ chronologisch sortiert ist.
+- Prüfen, dass höchstens 8 Einträge angezeigt werden.
+- Dashboard-Eintrag antippen/anklicken und direkten Sprung zum Mitglied prüfen.
+- Einstellungen: Jubiläumsjahre z. B. auf `10, 25, 50` setzen.
+- Prüfen, dass ein 20-jähriges Jubiläum danach nicht mehr als wichtiges Jubiläum erscheint.
+- Vereinsjahr auf dieselben Jubiläumsjahre prüfen.
+- Jubiläumserinnerung deaktivieren: Dashboard darf keine Jubiläen mehr zeigen; Geburtstage bleiben sichtbar.
+- Smartphone-Breite prüfen: Anlass-Badge, Name und Datumszeile müssen ohne horizontales Scrollen nutzbar sein.
+
+## Kanban-Sortierung
+- In derselben Spalte Aufgaben mit gestern, heute, morgen, +3 Tagen, +20 Tagen und ohne Termin anlegen.
+- Reihenfolge muss genau dieser zeitlichen Dringlichkeit entsprechen.
+- Zwei Aufgaben mit identischem Datum und unterschiedlicher Priorität anlegen: Hoch muss vor Mittel, Mittel vor Niedrig stehen.
+- Überfällige Karte muss den Text „X Tage überfällig“ zeigen.
+- Heute/Morgen/nächste Tage müssen als verständlicher Text sichtbar sein.
+- Aufgabe per Drag & Drop in eine andere Status-Spalte verschieben: danach automatische Neusortierung prüfen.
+- Smartphone-Breite prüfen: Fälligkeitsbadge und Datum dürfen die Karte nicht horizontal sprengen.
+
+## Projekt ↔ Termin
+- Projekt anlegen: Felder Projektbeginn / Projektende prüfen.
+- Auf Projektkarte „+ Termin zum Projekt“ wählen.
+- Projektname, Gruppe, Beschreibung und vorgeschlagenes Termindatum prüfen.
+- Termin speichern: Projektkarte muss den Termin anzeigen.
+- Termindetails öffnen: „Gehört zu Projekt“ prüfen.
+- Bestehenden freien Termin im Projekt auswählen und speichern.
+- Zugehöriges Projekt im Termin ändern.
+- „Verknüpfung lösen“: beide Datensätze müssen erhalten bleiben.
+- Projekt löschen: Termin muss erhalten bleiben.
+- Termin löschen: Projekt muss erhalten bleiben.
+- Smartphone: Verknüpfungsbereich und Buttons ohne horizontales Scrollen testen.
