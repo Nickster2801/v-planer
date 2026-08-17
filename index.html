@@ -1,749 +1,722 @@
-<!doctype html>
+<!DOCTYPE html>
+
 <html lang="de">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#075aa8">
-  <meta name="description" content="V-Planer – Vereinsplanung, Mitglieder, Gruppen, Projekte und Dokumente.">
-  <title>V-Planer · Dein Verein. Einfach organisiert.</title>
-  <link rel="manifest" href="manifest.webmanifest">
-  <link rel="icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="styles.css">
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="config.js"></script>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/>
+<meta content="#075aa8" name="theme-color"/>
+<meta content="V-Planer – Vereinsplanung, Mitglieder, Gruppen, Projekte und Dokumente." name="description"/>
+<title>V-Planer · Dein Verein. Einfach organisiert.</title>
+<link href="manifest.webmanifest" rel="manifest"/>
+<link href="icons/icon-192.png" rel="icon"/>
+<link href="styles.css" rel="stylesheet"/>
+<script async="" defer="" src="https://accounts.google.com/gsi/client"></script>
+<script src="config.js"></script>
 </head>
 <body>
 <div class="app-shell">
-  <aside class="sidebar">
-    <div class="brand">
-      <img class="brand-logo" src="assets/v-planer-logo.png" alt="V-Planer Logo">
-      <div class="brand-copy">
-        <strong>V-Planer</strong>
-        <small><span>Dein Verein.</span> Einfach organisiert.</small>
-      </div>
-    </div>
-
-    <nav id="mainNav">
-      <button class="nav-btn active" data-view="dashboard">🏠 <span>Übersicht</span></button>
-
-      <div class="nav-section">Planung</div>
-      <button class="nav-btn" data-view="tasks">✅ <span>Aufgaben</span></button>
-      <button class="nav-btn" data-view="projects">📁 <span>Projekte</span></button>
-      <button class="nav-btn" data-view="kanban">▦ <span>Kanban</span></button>
-      <button class="nav-btn" data-view="calendar">📅 <span>Kalender</span></button>
-      <button class="nav-btn" data-view="year">🗓 <span>Vereinsjahr</span></button>
-      <button class="nav-btn" data-view="archive">🗄️ <span>Archiv</span></button>
-
-      <div class="nav-module" data-module="club">
-        <div class="nav-section">Verein</div>
-        <button class="nav-btn" data-view="members">👥 <span>Mitglieder</span></button>
-        <button class="nav-btn" data-view="groups">🌳 <span>Gruppen</span></button>
-        <button class="nav-btn" data-view="meetings">📝 <span>Sitzungen & Beschlüsse</span></button>
-      </div>
-
-      <div class="nav-module" data-module="finance">
-        <div class="nav-section">Finanzen</div>
-        <button class="nav-btn" data-view="finance-kasse">💶 <span>KassenKumpel</span></button>
-        <button class="nav-btn" data-view="finance-fines">⚠️ <span>Strafen</span></button>
-      </div>
-
-      <div class="nav-module" data-module="documents">
-        <div class="nav-section">Dokumente</div>
-        <button class="nav-btn" data-view="documents">📄 <span>Dokumente & Bilder</span></button>
-        <button class="nav-btn" data-view="knowledge">📚 <span>Vereinswissen</span></button>
-      </div>
-
-      <div class="nav-section">System</div>
-      <button class="nav-btn" data-view="trash">🗑️ <span>Papierkorb</span><span class="nav-count" id="trashNavCount"></span></button>
-      <button class="nav-btn" data-view="storage">☁️ <span>Speicher & Sync</span></button>
-      <button class="nav-btn" data-view="settings">⚙️ <span>Einstellungen</span></button>
-    </nav>
-
-    <div class="sidebar-footer">
-      <small>V-Planer Cloud · 1.7.0</small>
-    </div>
-  </aside>
-
-  <main class="main">
-    <header class="topbar">
-      <div class="top-title">
-        <img class="mobile-logo" src="assets/v-planer-logo.png" alt="V-Planer">
-        <div>
-          <h1 id="pageTitle">Übersicht</h1>
-          <div id="pageSubtitle" class="subtitle">Heute, diese Woche und alles Wichtige im Blick.</div>
-        </div>
-      </div>
-      <div class="global-search" id="globalSearchWrap">
-        <button class="global-search-mobile-btn" id="globalSearchMobileBtn" type="button" aria-label="V-Planer durchsuchen">⌕</button>
-        <div class="global-search-field">
-          <span aria-hidden="true">⌕</span>
-          <input id="globalSearchInput" type="search" autocomplete="off" placeholder="V-Planer durchsuchen …" aria-label="V-Planer durchsuchen">
-          <button id="globalSearchClear" type="button" aria-label="Suche leeren">×</button>
-        </div>
-        <div class="global-search-results" id="globalSearchResults" hidden></div>
-      </div>
-      <div class="top-actions">
-        <div class="sync-indicator">
-          <strong id="driveState">● Nur lokal</strong>
-          <small id="lastSync">Noch nicht synchronisiert</small>
-        </div>
-        <button class="btn secondary" id="syncBtn">↻ Synchronisieren</button>
-        <button class="btn primary" id="quickCreateBtn">+ Neu erstellen</button>
-      </div>
-    </header>
-
-    <div class="content">
-      <section class="view active" id="view-dashboard">
-        <div id="alertStrip" class="alert-strip hidden"></div>
-
-        <div class="metrics">
-          <div class="card metric"><span>Offene Aufgaben</span><b id="metricOpenTasks">0</b><small id="metricTaskHint">Heute 0 · Woche 0</small></div>
-          <div class="card metric"><span>Aktive Projekte</span><b id="metricProjects">0</b><small id="metricProjectHint">0 mit Termin</small></div>
-          <div class="card metric"><span>Mitglieder</span><b id="metricMembers">0</b><small id="metricMemberHint">0 aktiv</small></div>
-          <div class="card metric next-birthday-metric"><span>Nächster Geburtstag</span><b id="metricBirthdays">—</b><small id="metricBirthdayHint">Noch kein Geburtstag hinterlegt</small></div>
-        </div>
-
-        <div class="dash-grid two">
-          <div class="card">
-            <div class="card-head"><h2>Heute & diese Woche</h2><button class="link-btn" data-go="tasks">Alle Aufgaben</button></div>
-            <div class="card-body" id="dashboardTasks"></div>
-          </div>
-          <div class="card">
-            <div class="card-head"><h2>Aktive Projekte</h2><button class="link-btn" data-go="projects">Alle Projekte</button></div>
-            <div class="card-body" id="dashboardProjects"></div>
-          </div>
-        </div>
-
-        <div class="dash-grid three">
-          <div class="card">
-            <div class="card-head"><h2>Geburtstage & Jubiläen</h2><button class="link-btn" data-go="members">Mitglieder</button></div>
-            <div class="card-body" id="dashboardBirthdays"></div>
-          </div>
-          <div class="card">
-            <div class="card-head"><h2>Nächste Termine</h2><button class="link-btn" data-go="calendar">Kalender</button></div>
-            <div class="card-body" id="dashboardEvents"></div>
-          </div>
-          <div class="card">
-            <div class="card-head"><h2>Speicher & Synchronisation</h2></div>
-            <div class="card-body" id="dashboardStorage"></div>
-          </div>
-        </div>
-      </section>
-
-      <section class="view" id="view-tasks">
-        <div class="toolbar">
-          <input class="search" id="taskSearch" placeholder="Aufgaben durchsuchen …">
-          <select id="taskStatusFilter"><option value="">Alle Status</option><option value="open">Offen</option><option value="doing">In Arbeit</option><option value="wait">Warten</option><option value="done">Erledigt</option></select>
-          <div class="task-sort-mobile">
-            <select id="taskSortSelect" aria-label="Aufgaben sortieren">
-              <option value="due">Fälligkeit</option>
-              <option value="title">Aufgabe</option>
-              <option value="project">Projekt</option>
-              <option value="group">Gruppe</option>
-              <option value="priority">Priorität</option>
-              <option value="status">Status</option>
-            </select>
-            <button class="btn secondary" id="taskSortDir" type="button">↑ Aufsteigend</button>
-          </div>
-          <button class="btn primary" data-action="new-task">+ Aufgabe</button>
-        </div>
-        <div class="card table-card"><div class="table-wrap"><table class="table task-table"><thead><tr>
-            <th aria-sort="none"><button class="table-sort" type="button" data-task-sort="title">Aufgabe</button></th>
-            <th aria-sort="none"><button class="table-sort" type="button" data-task-sort="project">Projekt</button></th>
-            <th aria-sort="none"><button class="table-sort" type="button" data-task-sort="group">Gruppe</button></th>
-            <th aria-sort="ascending"><button class="table-sort active" type="button" data-task-sort="due">Fällig <span class="sort-arrow" aria-hidden="true">↑</span></button></th>
-            <th aria-sort="none"><button class="table-sort" type="button" data-task-sort="priority">Priorität</button></th>
-            <th aria-sort="none"><button class="table-sort" type="button" data-task-sort="status">Status</button></th>
-            <th>Aktionen</th>
-          </tr></thead><tbody id="taskTable"></tbody></table></div></div>
-      </section>
-
-      <section class="view" id="view-projects">
-        <div class="toolbar">
-          <input class="search" id="projectSearch" placeholder="Projekte durchsuchen …">
-          <select id="projectStatusFilter"><option value="">Alle Status</option><option value="planned">Geplant</option><option value="active">Aktiv</option><option value="paused">Pausiert</option><option value="closed">Abgeschlossen</option></select>
-          <button class="btn primary" data-action="new-project">+ Projekt</button>
-        </div>
-        <div class="cards-grid" id="projectGrid"></div>
-      </section>
-
-      <section class="view" id="view-kanban"><div class="board" id="kanbanBoard"></div></section>
-
-      <section class="view" id="view-calendar">
-        <div class="toolbar calendar-view-toolbar">
-          <div class="calendar-mode-toggle" role="group" aria-label="Kalenderansicht">
-            <button class="btn secondary" id="calendarAgendaMode" type="button" data-calendar-mode="agenda">☷ Agenda</button>
-            <button class="btn secondary" id="calendarMonthMode" type="button" data-calendar-mode="month">▦ Monat</button>
-          </div>
-          <button class="btn primary" data-action="new-event">+ Termin</button>
-        </div>
-        <div class="calendar-layout">
-          <div class="card calendar-card">
-            <div class="calendar-head">
-              <button id="prevMonth" class="calendar-nav-btn" type="button" aria-label="Vorheriger Monat">‹</button>
-              <div class="calendar-title-group">
-                <h2 id="calendarTitle"></h2>
-                <button id="todayMonth" class="calendar-today-btn" type="button">Heute</button>
-              </div>
-              <button id="nextMonth" class="calendar-nav-btn" type="button" aria-label="Nächster Monat">›</button>
-            </div>
-            <div class="calendar-legend" aria-label="Kalenderlegende">
-              <span><i class="legend-dot event-dot"></i>Termin</span>
-              <span><i class="legend-dot task-dot"></i>Aufgabe</span>
-              <span><i class="legend-dot project-dot"></i>Projekt</span>
-              <span><i class="legend-dot birthday-dot"></i>Geburtstag</span>
-            </div>
-            <div class="calendar-grid" id="calendarGrid"></div>
-            <div class="calendar-agenda" id="calendarAgenda"></div>
-          </div>
-          <div class="card calendar-side-card"><div class="card-head"><h2>Nächste Einträge</h2></div><div class="card-body" id="calendarSideList"></div></div>
-        </div>
-      </section>
-
-      <section class="view" id="view-year">
-        <div class="card year-overview-head">
-          <div class="calendar-head">
-            <button id="prevYear" class="calendar-nav-btn" type="button" aria-label="Vorheriges Jahr">‹</button>
-            <div class="calendar-title-group">
-              <h2 id="yearTitle"></h2>
-              <button id="todayYear" class="calendar-today-btn" type="button">Aktuelles Jahr</button>
-            </div>
-            <button id="nextYear" class="calendar-nav-btn" type="button" aria-label="Nächstes Jahr">›</button>
-          </div>
-          <div class="calendar-legend year-legend" aria-label="Legende Vereinsjahr">
-            <span><i class="legend-dot event-dot"></i>Termin</span>
-            <span><i class="legend-dot task-dot"></i>Aufgabe</span>
-            <span><i class="legend-dot project-dot"></i>Projekt</span>
-            <span><i class="legend-dot birthday-dot"></i>Geburtstag</span>
-            <span><i class="legend-dot jubilee-dot"></i>Vereinsjubiläum</span>
-          </div>
-          <small class="muted">Alle datumsbezogenen Einträge des gewählten Jahres werden angezeigt. Ein Klick öffnet den zugehörigen Datensatz.</small>
-        </div>
-        <div class="year-grid" id="yearGrid"></div>
-      </section>
-
-      <section class="view" id="view-archive">
-        <div class="archive-summary">
-          <div class="card archive-metric"><span>Archivierte Aufgaben</span><b id="archiveTaskCount">0</b><small>Erledigte Aufgaben</small></div>
-          <div class="card archive-metric"><span>Archivierte Projekte</span><b id="archiveProjectCount">0</b><small>Abgeschlossene Projekte</small></div>
-        </div>
-        <div class="archive-grid">
-          <div class="card">
-            <div class="card-head"><div><h2>Aufgabenarchiv</h2><small class="muted">Erledigte Aufgaben, die nicht mehr in den aktiven Listen erscheinen.</small></div></div>
-            <div class="card-body archive-list" id="archiveTasks"></div>
-          </div>
-          <div class="card">
-            <div class="card-head"><div><h2>Projektarchiv</h2><small class="muted">Abgeschlossene Projekte inklusive ihrer Historie.</small></div></div>
-            <div class="card-body archive-list" id="archiveProjects"></div>
-          </div>
-        </div>
-      </section>
-
-      <section class="view finance-view" id="view-finance-kasse" data-module="finance">
-        <div class="finance-kassen-head card">
-          <div class="finance-kassen-brand">
-            <img src="finance/kassenkumpel/assets/kassenkumpel-logo-192.png" alt="KassenKumpel">
-            <div>
-              <h2>KassenKumpel</h2>
-              <p>Kassenbuch, Barkasse, Belege, Kassenabschlüsse, Auswertungen und KassenKumpel-Einstellungen im V-Planer-Finanzbereich.</p>
-              <small id="kassenSyncState">KassenKumpel wird geladen …</small>
-            </div>
-          </div>
-          <div class="finance-kassen-version">integriert · 1.1.1</div>
-        </div>
-        <div class="finance-frame-card card">
-          <iframe id="kassenKumpelFrame" class="finance-frame" src="finance/kassenkumpel/index.html?embed=1" title="KassenKumpel" loading="lazy"></iframe>
-        </div>
-      </section>
-
-      <section class="view finance-view" id="view-finance-fines" data-module="finance">
-        <div class="finance-metrics">
-          <div class="card finance-metric"><span>Offener Betrag</span><b id="fineOpenAmount">0,00 €</b><small>Noch nicht bezahlt</small></div>
-          <div class="card finance-metric"><span>Bezahlt dieses Jahr</span><b id="finePaidYear">0,00 €</b><small>Eingegangene Strafen</small></div>
-          <div class="card finance-metric"><span>Offene Strafen</span><b id="fineOpenCount">0</b><small>Zu bearbeiten</small></div>
-          <div class="card finance-metric"><span>Strafen gesamt</span><b id="fineTotalCount">0</b><small>ohne gelöschte Einträge</small></div>
-        </div>
-        <div class="toolbar">
-          <input class="search" id="fineSearch" placeholder="Strafen durchsuchen …">
-          <select id="fineStatusFilter"><option value="">Alle Status</option><option value="open">Offen</option><option value="paid">Bezahlt</option><option value="waived">Erlassen</option></select>
-          <div class="fine-sort-mobile">
-            <select id="fineSortSelect" aria-label="Strafen sortieren">
-              <option value="date">Datum</option><option value="member">Mitglied</option><option value="reason">Grund</option><option value="amount">Betrag</option><option value="due">Fälligkeit</option><option value="status">Status</option>
-            </select>
-            <button class="btn secondary" id="fineSortDir" type="button">↓ Absteigend</button>
-          </div>
-          <button class="btn secondary fine-catalog-open-btn" id="fineCatalogBtn" type="button">📋 Strafkatalog</button>
-          <button class="btn primary" id="newFineBtn" type="button">+ Strafe</button>
-        </div>
-        <div id="fineOpenNotice" class="fine-open-notice" hidden></div>
-        <div class="card table-card"><div class="table-wrap"><table class="table fine-table">
-          <thead><tr>
-            <th aria-sort="descending"><button class="table-sort active" type="button" data-fine-sort="date">Datum <span class="sort-arrow">↓</span></button></th>
-            <th aria-sort="none"><button class="table-sort" type="button" data-fine-sort="member">Mitglied</button></th>
-            <th aria-sort="none"><button class="table-sort" type="button" data-fine-sort="reason">Grund</button></th>
-            <th aria-sort="none"><button class="table-sort" type="button" data-fine-sort="amount">Betrag</button></th>
-            <th aria-sort="none"><button class="table-sort" type="button" data-fine-sort="due">Fällig</button></th>
-            <th aria-sort="none"><button class="table-sort" type="button" data-fine-sort="status">Status</button></th>
-            <th>Aktionen</th>
-          </tr></thead><tbody id="fineTable"></tbody>
-        </table></div></div>
-      </section>
-
-      <section class="view" id="view-members">
-        <div class="toolbar">
-          <input class="search" id="memberSearch" placeholder="Mitglieder suchen …">
-          <select id="memberStatusFilter"><option value="">Alle Status</option><option value="active">Aktiv</option><option value="inactive">Deaktiviert</option><option value="passive">Passiv</option><option value="deceased">Verstorben</option></select>
-          <select id="memberHonoraryFilter" aria-label="Ehrenmitglieder filtern"><option value="">Alle Mitglieder</option><option value="yes">Nur Ehrenmitglieder</option><option value="no">Ohne Ehrenmitglieder</option></select>
-          <div class="member-sort-mobile">
-            <select id="memberSortSelect" aria-label="Mitglieder sortieren">
-              <option value="number">Nummer</option>
-              <option value="name">Name</option>
-              <option value="status">Status</option>
-              <option value="age">Alter</option>
-              <option value="groups">Gruppen</option>
-              <option value="next">Nächster Termin</option>
-            </select>
-            <button class="btn secondary" id="memberSortDir" type="button">↑ Aufsteigend</button>
-          </div>
-          <button class="btn secondary" id="memberImportBtn" type="button">⇧ Import</button>
-          <button class="btn secondary" id="memberExportBtn" type="button">⇩ Export</button>
-          <button class="btn secondary" id="householdManagerBtn" type="button">⌂ Haushalte</button>
-          <input id="memberImportInput" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
-          <button class="btn primary" data-action="new-member">+ Mitglied</button>
-        </div>
-        <div class="member-layout">
-          <div class="card table-card"><div class="table-wrap"><table class="table member-table"><thead><tr>
-            <th aria-sort="none"><button class="table-sort" type="button" data-member-sort="number">Nr.</button></th>
-            <th aria-sort="ascending"><button class="table-sort active" type="button" data-member-sort="name">Name <span class="sort-arrow" aria-hidden="true">↑</span></button></th>
-            <th aria-sort="none"><button class="table-sort" type="button" data-member-sort="status">Status</button></th>
-            <th aria-sort="none"><button class="table-sort" type="button" data-member-sort="age">Alter</button></th>
-            <th aria-sort="none"><button class="table-sort" type="button" data-member-sort="groups">Gruppen</button></th>
-            <th aria-sort="none"><button class="table-sort" type="button" data-member-sort="next">Nächster Termin</button></th>
-          </tr></thead><tbody id="memberTable"></tbody></table></div></div>
-          <div class="card member-detail"><div class="card-head"><h2>Mitglied</h2></div><div class="card-body" id="memberDetail"></div></div>
-        </div>
-      </section>
-
-      <section class="view" id="view-groups">
-        <div class="toolbar">
-          <button class="btn primary" data-action="new-group">+ Gruppe</button>
-          <button class="btn secondary" id="newFunctionBtn">+ Funktion</button>
-        </div>
-        <div class="group-layout">
-          <div class="card"><div class="card-head"><h2>Gruppenstruktur</h2></div><div class="card-body tree" id="groupTree"></div></div>
-          <div class="card"><div class="card-head"><h2 id="groupDetailTitle">Gruppendetails</h2><div class="head-actions"><button class="btn tiny secondary" id="linkGroupBtn" type="button">Verknüpfen</button><button class="btn tiny secondary" id="editGroupBtn">Bearbeiten</button><button class="btn tiny danger" id="deleteGroupBtn">Löschen</button></div></div><div class="card-body" id="groupDetail"></div></div>
-        </div>
-      </section>
-
-      <section class="view" id="view-meetings">
-        <div class="toolbar">
-          <button class="btn primary" data-action="new-meeting">+ Sitzung</button>
-          <button class="btn secondary" type="button" data-new-folder="meetings">+ Ordner</button>
-        </div>
-        <div class="content-browser-layout">
-          <aside class="card folder-panel">
-            <div class="card-head"><h2>Ordner</h2></div>
-            <div class="card-body folder-tree" id="meetingFolderTree"></div>
-          </aside>
-          <div class="browser-main">
-            <div class="card folder-toolbar">
-              <div><small class="muted">Aktueller Ordner</small><div class="folder-breadcrumb" id="meetingFolderPath"></div></div>
-              <div class="folder-toolbar-actions">
-                <button class="btn tiny secondary folder-export-btn" type="button" data-export-folder="meetings">Exportieren</button>
-                <button class="btn tiny secondary" type="button" data-rename-folder="meetings">Umbenennen</button>
-                <button class="btn tiny danger" type="button" data-delete-folder="meetings">Ordner löschen</button>
-              </div>
-              <div class="folder-export-status" data-export-status="meetings" aria-live="polite"></div>
-            </div>
-            <div class="card upload-card"><div class="upload-zone">
-              <div><h3>Datei ablegen</h3><p>Word, PDF, Excel, Bilder und weitere Dateien im aktuellen Ordner. Ganze Ordner können inklusive Unterordnern übernommen werden.</p></div>
-              <input id="meetingFileInput" type="file" multiple>
-              <input id="meetingFolderInput" class="folder-upload-input" type="file" webkitdirectory directory multiple>
-              <button class="btn secondary" id="meetingFolderUploadBtn" type="button">Ordner hochladen</button>
-              <div class="folder-upload-status" id="meetingFolderUploadStatus" aria-live="polite"></div>
-              <button class="btn primary" id="meetingUploadBtn" type="button">In Drive hochladen</button>
-            </div></div>
-            <div class="browser-section-title"><h2>Sitzungen & Beschlüsse</h2><span id="meetingFolderCount" class="mini-meta"></span></div>
-            <div class="cards-grid" id="meetingGrid"></div>
-            <div class="browser-section-title"><h2>Dateien</h2></div>
-            <div class="card table-card"><div class="table-wrap"><table class="table area-file-table"><thead><tr><th>Name</th><th>Typ</th><th>Größe</th><th>Datum</th><th></th></tr></thead><tbody id="meetingFileTable"></tbody></table></div></div>
-          </div>
-        </div>
-      </section>
-
-      <section class="view" id="view-documents">
-        <div class="toolbar">
-          <input class="search" id="documentSearch" placeholder="Dateien im aktuellen Ordner durchsuchen …">
-          <button class="btn secondary" type="button" data-new-folder="documents">+ Ordner</button>
-        </div>
-        <div class="content-browser-layout">
-          <aside class="card folder-panel">
-            <div class="card-head"><h2>Ordner</h2></div>
-            <div class="card-body folder-tree" id="documentFolderTree"></div>
-          </aside>
-          <div class="browser-main">
-            <div class="card folder-toolbar">
-              <div><small class="muted">Aktueller Ordner</small><div class="folder-breadcrumb" id="documentFolderPath"></div></div>
-              <div class="folder-toolbar-actions">
-                <button class="btn tiny secondary folder-export-btn" type="button" data-export-folder="documents">Exportieren</button>
-                <button class="btn tiny secondary" type="button" data-rename-folder="documents">Umbenennen</button>
-                <button class="btn tiny danger" type="button" data-delete-folder="documents">Ordner löschen</button>
-              </div>
-              <div class="folder-export-status" data-export-status="documents" aria-live="polite"></div>
-            </div>
-            <div class="card upload-card"><div class="upload-zone">
-              <div><h3>Dateien ablegen</h3><p>PDF, Word, Excel, Präsentationen, Bilder und andere Vereinsdateien. Die Einordnung erfolgt ausschließlich über deine Ordnerstruktur – zusätzliche Kategorien sind nicht nötig.</p></div>
-              <input id="fileInput" type="file" multiple>
-              <input id="documentFolderInput" class="folder-upload-input" type="file" webkitdirectory directory multiple>
-              <button class="btn secondary" id="documentFolderUploadBtn" type="button">Ordner hochladen</button>
-              <div class="folder-upload-status" id="documentFolderUploadStatus" aria-live="polite"></div>
-              <button class="btn primary" id="uploadBtn" type="button">In Drive hochladen</button>
-            </div></div>
-            <div class="browser-section-title"><h2>Dateien</h2><span id="documentFolderCount" class="mini-meta"></span></div>
-            <div class="card table-card"><div class="table-wrap"><table class="table area-file-table"><thead><tr><th>Name</th><th>Typ</th><th>Größe</th><th>Datum</th><th></th></tr></thead><tbody id="docTable"></tbody></table></div></div>
-          </div>
-        </div>
-      </section>
-
-      <section class="view" id="view-knowledge">
-        <div class="toolbar">
-          <input class="search" id="knowledgeSearch" placeholder="Vereinswissen im aktuellen Ordner durchsuchen …">
-          <button class="btn primary" data-action="new-knowledge">+ Eintrag</button>
-          <button class="btn secondary" type="button" data-new-folder="knowledge">+ Ordner</button>
-        </div>
-        <div class="content-browser-layout">
-          <aside class="card folder-panel">
-            <div class="card-head"><h2>Ordner</h2></div>
-            <div class="card-body folder-tree" id="knowledgeFolderTree"></div>
-          </aside>
-          <div class="browser-main">
-            <div class="card folder-toolbar">
-              <div><small class="muted">Aktueller Ordner</small><div class="folder-breadcrumb" id="knowledgeFolderPath"></div></div>
-              <div class="folder-toolbar-actions">
-                <button class="btn tiny secondary folder-export-btn" type="button" data-export-folder="knowledge">Exportieren</button>
-                <button class="btn tiny secondary" type="button" data-rename-folder="knowledge">Umbenennen</button>
-                <button class="btn tiny danger" type="button" data-delete-folder="knowledge">Ordner löschen</button>
-              </div>
-              <div class="folder-export-status" data-export-status="knowledge" aria-live="polite"></div>
-            </div>
-            <div class="card upload-card"><div class="upload-zone">
-              <div><h3>Datei zum Vereinswissen ablegen</h3><p>Zum Beispiel Anleitungen, Word-Dateien, PDFs oder Vorlagen. Ganze Ordner können inklusive Unterordnern hochgeladen werden.</p></div>
-              <input id="knowledgeFileInput" type="file" multiple>
-              <input id="knowledgeFolderInput" class="folder-upload-input" type="file" webkitdirectory directory multiple>
-              <button class="btn secondary" id="knowledgeFolderUploadBtn" type="button">Ordner hochladen</button>
-              <div class="folder-upload-status" id="knowledgeFolderUploadStatus" aria-live="polite"></div>
-              <button class="btn primary" id="knowledgeUploadBtn" type="button">In Drive hochladen</button>
-            </div></div>
-            <div class="browser-section-title"><h2>Wissenseinträge</h2><span id="knowledgeFolderCount" class="mini-meta"></span></div>
-            <div class="cards-grid" id="knowledgeGrid"></div>
-            <div class="browser-section-title"><h2>Dateien</h2></div>
-            <div class="card table-card"><div class="table-wrap"><table class="table area-file-table"><thead><tr><th>Name</th><th>Typ</th><th>Größe</th><th>Datum</th><th></th></tr></thead><tbody id="knowledgeFileTable"></tbody></table></div></div>
-          </div>
-        </div>
-      </section>
-
-      <section class="view" id="view-trash">
-        <div class="toolbar trash-toolbar">
-          <input class="search" id="trashSearch" placeholder="Papierkorb durchsuchen …">
-          <select id="trashTypeFilter" aria-label="Papierkorb filtern">
-            <option value="">Alle Bereiche</option>
-            <option value="tasks">Aufgaben</option>
-            <option value="projects">Projekte</option>
-            <option value="events">Termine</option>
-            <option value="members">Mitglieder</option>
-            <option value="groups">Gruppen</option>
-            <option value="functions">Funktionen</option>
-            <option value="meetings">Sitzungen & Beschlüsse</option>
-            <option value="knowledge">Vereinswissen</option>
-            <option value="documents">Dokumente & Bilder</option>
-            <option value="folders">Ordner</option>
-            <option value="fines">Strafen</option>
-            <option value="households">Haushalte</option>
-          </select>
-          <button class="btn danger" id="emptyTrashBtn" type="button">Papierkorb leeren</button>
-        </div>
-        <div class="card trash-info">
-          <div><b>Papierkorb</b><span>Gelöschte Inhalte können wiederhergestellt oder endgültig entfernt werden. Ordner werden inklusive ihrer gelöschten Unterstruktur behandelt.</span></div>
-          <strong id="trashCount">0</strong>
-        </div>
-        <div class="trash-list" id="trashList"></div>
-      </section>
-
-      <section class="view" id="view-storage">
-        <div class="storage-grid">
-          <div class="card"><div class="card-head"><h2>Speicherübersicht</h2></div><div class="card-body" id="storageDetail"></div></div>
-          <div class="card"><div class="card-head"><h2>Google Drive</h2></div><div class="card-body"><div class="notice" id="driveInfo">Noch nicht verbunden.</div><div class="button-row"><button class="btn primary" id="connectDriveBtn">Google Drive verbinden</button><button class="btn secondary" id="syncNowBtn">Jetzt synchronisieren</button></div><div class="meta-box"><b>OAuth Client-ID</b><div id="clientIdDisplay"></div></div></div></div>
-        </div>
-      </section>
-
-      <section class="view" id="view-settings">
-        <div class="settings-grid">
-          <div class="card setting-card club-masterdata-card settings-wide">
-            <div class="club-masterdata-head">
-              <div>
-                <h2>Vereinsdaten</h2>
-                <p class="setting-help">Zentrale Stammdaten des Vereins. Diese Angaben können später für Ausweise, Dokumente, Exporte und Vorlagen verwendet werden.</p>
-              </div>
-              <span class="settings-version-badge">V-Planer 1.7.0</span>
-            </div>
-
-            <div class="club-data-layout">
-              <section class="club-data-section club-data-brand">
-                <h3>Grunddaten</h3>
-                <div class="club-logo-editor">
-                  <div id="clubLogoPreview" class="club-logo-preview" aria-label="Vereinslogo Vorschau"></div>
-                  <div class="club-logo-controls">
-                    <label>Vereinslogo
-                      <input id="clubLogoInput" type="file" accept="image/*">
-                    </label>
-                    <button class="btn tiny secondary" id="clubLogoRemoveBtn" type="button">Logo entfernen</button>
-                    <small>Wird komprimiert in den V-Planer-Stammdaten gespeichert.</small>
-                  </div>
-                </div>
-                <div class="club-data-fields two">
-                  <label>Offizieller Vereinsname<input id="clubName" autocomplete="organization"></label>
-                  <label>Kurzname / Abkürzung<input id="clubShortName" placeholder="z. B. TSV Musterstadt"></label>
-                  <label>Gründungsdatum<input id="clubFoundedDate" type="date"></label>
-                  <label>Rechtsform<input id="clubLegalForm" list="clubLegalForms" placeholder="z. B. e. V."></label>
-                  <datalist id="clubLegalForms">
-                    <option value="e. V."><option value="nicht eingetragener Verein"><option value="gGmbH"><option value="Sonstige">
-                  </datalist>
-                </div>
-              </section>
-
-              <section class="club-data-section">
-                <h3>Anschrift & Kontakt</h3>
-                <div class="club-data-fields two">
-                  <label class="full">Straße / Hausnummer<input id="clubStreet" autocomplete="street-address"></label>
-                  <label>PLZ<input id="clubZip" inputmode="numeric" autocomplete="postal-code"></label>
-                  <label>Ort<input id="clubCity" autocomplete="address-level2"></label>
-                  <label>E-Mail<input id="clubEmail" type="email" autocomplete="email"></label>
-                  <label>Telefon<input id="clubPhone" type="tel" autocomplete="tel"></label>
-                  <label class="full">Website<input id="clubWebsite" type="url" placeholder="https://…"></label>
-                </div>
-              </section>
-
-              <section class="club-data-section">
-                <h3>Register & Verwaltung</h3>
-                <div class="club-data-fields two">
-                  <label>Vereinsregister-Nr.<input id="clubRegisterNo" placeholder="z. B. VR 1234"></label>
-                  <label>Registergericht<input id="clubRegisterCourt"></label>
-                  <label>Steuernummer<input id="clubTaxNo"></label>
-                  <label>Zuständiges Finanzamt<input id="clubTaxOffice"></label>
-                  <label>Geschäftsjahr von<input id="clubFiscalStart" placeholder="01.01."></label>
-                  <label>Geschäftsjahr bis<input id="clubFiscalEnd" placeholder="31.12."></label>
-                </div>
-              </section>
-
-              <section class="club-data-section">
-                <h3>Vereinsheim / Standardort</h3>
-                <div class="club-data-fields two">
-                  <label class="full">Bezeichnung<input id="clubVenueName" placeholder="z. B. Vereinsheim"></label>
-                  <label class="full">Straße / Hausnummer<input id="clubVenueStreet"></label>
-                  <label>PLZ<input id="clubVenueZip" inputmode="numeric"></label>
-                  <label>Ort<input id="clubVenueCity"></label>
-                </div>
-              </section>
-
-              <section class="club-data-section club-data-functions">
-                <h3>Verantwortliche Funktionen</h3>
-                <p class="setting-help">Die Personen werden nicht doppelt gepflegt. Verknüpfe hier bereits angelegte Funktionen aus dem Vereinsbereich.</p>
-                <div class="club-data-fields three">
-                  <label>Vorsitz<select id="clubChairFunction"></select></label>
-                  <label>Schriftführung<select id="clubSecretaryFunction"></select></label>
-                  <label>Kasse<select id="clubTreasurerFunction"></select></label>
-                </div>
-                <div class="club-function-note">Ändert sich die Besetzung einer Funktion, verwendet V-Planer automatisch die aktuelle verknüpfte Person.</div>
-              </section>
-
-              <section class="club-data-section">
-                <h3>Weitere Angaben</h3>
-                <div class="club-data-fields">
-                  <label>Kurze Vereinsbeschreibung<textarea id="clubDescription" rows="4" placeholder="Was macht den Verein aus?"></textarea></label>
-                  <label>Interne Hinweise<textarea id="clubInternalNotes" rows="4" placeholder="Nur für die interne Organisation relevante Hinweise …"></textarea></label>
-                </div>
-              </section>
-            </div>
-          </div>
-
-          <div class="card setting-card">
-            <h2>Eigenes Profil</h2>
-            <p class="setting-help">Persönliche Angaben des aktuell verwendeten V-Planer-Profils. Diese gehören nicht zu den Vereinsstammdaten.</p>
-            <label>Eigene Rolle<input id="userRole" placeholder="z. B. Vorsitzender"></label>
-          </div>
-
-          <div class="card setting-card" data-module="club">
-            <h2>Ehrenmitglieder</h2>
-            <p class="setting-help">Lege fest, wie die Kennzeichnung „Ehrenmitglied“ im Mitgliederbereich verwendet wird.</p>
-            <div class="switch-row"><div><b>Ehrenmitglieder automatisch beitragsfrei</b><small>Markiert Ehrenmitglieder im V-Planer als beitragsfrei. Es werden dadurch keine automatischen Bank- oder Kassenbuchungen erzeugt.</small></div><label class="switch"><input id="honoraryContributionFree" type="checkbox"><span></span></label></div>
-          </div>
-
-          <div class="card setting-card">
-            <h2>Darstellung & Skalierung</h2>
-            <p class="setting-help">Passe die Größe der gesamten V-Planer-Oberfläche an dein Gerät und deine bevorzugte Darstellung an.</p>
-            <label>Oberflächengröße <b id="uiScaleLabel">100%</b>
-              <input id="uiScale" type="range" min="80" max="125" step="5" value="100">
-            </label>
-            <div class="scale-guide"><span>80%</span><span>100%</span><span>125%</span></div>
-            <button class="btn secondary" id="resetUiScaleBtn" type="button">Auf 100% zurücksetzen</button>
-          </div>
-
-
-          <div class="card setting-card">
-            <h2>Bereiche ein-/ausblenden</h2>
-            <p class="setting-help">Die Daten bleiben erhalten. Es wird nur die Navigation ausgeblendet.</p>
-            <div class="switch-row"><div><b>Verein</b><small>Mitglieder, Gruppen, Sitzungen</small></div><label class="switch"><input id="moduleClub" type="checkbox"><span></span></label></div>
-            <div class="switch-row"><div><b>Finanzen</b><small>KassenKumpel und Strafen</small></div><label class="switch"><input id="moduleFinance" type="checkbox"><span></span></label></div>
-            <div class="switch-row"><div><b>Dokumente</b><small>Dokumente, Bilder, Vereinswissen</small></div><label class="switch"><input id="moduleDocuments" type="checkbox"><span></span></label></div>
-          </div>
-
-          <div class="card setting-card group-types-setting" data-module="club">
-            <h2>Gruppenarten</h2>
-            <p class="setting-help">Lege fest, welche Arten beim Erstellen einer Gruppe zur Auswahl stehen. Du kannst die Namen ändern, Einträge hinzufügen oder entfernen und die Reihenfolge anpassen.</p>
-            <div id="groupTypeList" class="group-type-list"></div>
-            <button class="btn secondary group-type-add" id="addGroupTypeBtn" type="button">+ Gruppenart hinzufügen</button>
-            <p class="setting-help group-type-note">Das Entfernen einer Gruppenart löscht keine bereits vorhandenen Gruppen. Bestehende Einträge behalten ihre bisherige Bezeichnung.</p>
-          </div>
-
-          <div class="card setting-card">
-            <h2>Warnungen & Erinnerungen</h2>
-            <p class="setting-help">Einfaches 3-Stufen-System für Aufgaben, Projekte und Termine.</p>
-            <div class="switch-row"><div><b>Warnsystem aktiv</b><small>Fälligkeiten farblich hervorheben</small></div><label class="switch"><input id="reminderEnabled" type="checkbox"><span></span></label></div>
-            <label>Hinweis ab <b id="infoDaysLabel">14</b> Tagen vorher<input id="infoDays" type="range" min="1" max="60"></label>
-            <label>Warnung ab <b id="warningDaysLabel">7</b> Tagen vorher<input id="warningDays" type="range" min="1" max="30"></label>
-            <label>Alarm ab <b id="alarmDaysLabel">2</b> Tagen vorher<input id="alarmDays" type="range" min="0" max="14"></label>
-            <div class="switch-row"><div><b>Geburtstage in dieser Woche</b><small>Hinweis auf der Übersicht</small></div><label class="switch"><input id="birthdayWeekReminder" type="checkbox"><span></span></label></div>
-            <div class="switch-row"><div><b>Runde Geburtstage hervorheben</b><small>Besondere Geburtstage auf der Übersicht deutlich markieren</small></div><label class="switch"><input id="roundBirthdayReminder" type="checkbox"><span></span></label></div>
-            <label>Runde Geburtstagsalter
-              <input id="roundBirthdayAgesInput" type="text" inputmode="numeric" placeholder="z. B. 20, 30, 40, 50, 60, 70, 80, 90, 100">
-              <small class="setting-help-inline">Kommagetrennt. Diese Altersstufen werden als runder Geburtstag hervorgehoben.</small>
-            </label>
-            <div class="switch-row"><div><b>Jubiläen erinnern</b><small>Wichtige Eintrittsjubiläen auf der Übersicht anzeigen</small></div><label class="switch"><input id="jubileeReminder" type="checkbox"><span></span></label></div>
-            <label>Wichtige Jubiläumsjahre
-              <input id="jubileeYearsInput" type="text" inputmode="numeric" placeholder="z. B. 10, 20, 25, 30, 40, 50">
-              <small class="setting-help-inline">Kommagetrennt. Diese Jahre werden auf der Übersicht und im Vereinsjahr als Jubiläum berücksichtigt.</small>
-            </label>
-          </div>
-
-          <div class="card setting-card calendar-sync-card" id="calendarSyncCard">
-            <h2>Google Kalender</h2>
-            <p class="setting-help">Zwei-Wege-Synchronisierung mit dem eigenen Google-Kalender „V-Planer“. Änderungen an Terminen werden in beide Richtungen abgeglichen; neue Termine im Google-Kalender werden automatisch in V-Planer übernommen. Aufgaben und Projekte werden ebenfalls abgeglichen, soweit ihre Kalenderdarstellung dies zulässt.</p>
-
-            <div id="calendarConnectionState" class="calendar-sync-state">Google Kalender noch nicht verbunden</div>
-            <div id="calendarSyncMeta" class="calendar-sync-meta">Noch nicht synchronisiert</div>
-
-            <div class="switch-row">
-              <div><b>Kalendersynchronisierung aktiv</b><small>Änderungen bei bestehender Verbindung in beide Richtungen abgleichen</small></div>
-              <label class="switch"><input id="calendarSyncEnabled" type="checkbox"><span></span></label>
-            </div>
-            <div class="switch-row">
-              <div><b>Termine synchronisieren</b><small>Mit Von-/Bis-Datum und Uhrzeiten</small></div>
-              <label class="switch"><input id="calendarSyncEvents" type="checkbox"><span></span></label>
-            </div>
-            <div class="switch-row">
-              <div><b>Geburtstage synchronisieren</b><small>Als jährliche ganztägige Einträge aus den Mitgliedsdaten</small></div>
-              <label class="switch"><input id="calendarSyncBirthdays" type="checkbox"><span></span></label>
-            </div>
-            <div class="switch-row">
-              <div><b>Aufgaben synchronisieren</b><small>Als ganztägiger Eintrag am Fälligkeitsdatum</small></div>
-              <label class="switch"><input id="calendarSyncTasks" type="checkbox"><span></span></label>
-            </div>
-            <div class="switch-row">
-              <div><b>Projekte synchronisieren</b><small>Als ganztägiger Eintrag über den Projektzeitraum</small></div>
-              <label class="switch"><input id="calendarSyncProjects" type="checkbox"><span></span></label>
-            </div>
-
-            <label>Kalendername<input id="calendarName" value="V-Planer"></label>
-
-            <div class="calendar-sync-actions">
-              <button class="btn primary" id="connectCalendarBtn" type="button">Google Kalender verbinden</button>
-              <button class="btn secondary" id="disconnectCalendarBtn" type="button">Verbindung trennen</button>
-            </div>
-
-            <div class="calendar-sync-note">
-              <b>Einmalige Google-Cloud-Einrichtung</b>
-              <span>Im selben Google-Cloud-Projekt wie für Drive muss zusätzlich die <strong>Google Calendar API</strong> aktiviert sein. V-Planer verwaltet ausschließlich den von V-Planer angelegten Kalender. Neue oder geänderte Termine in diesem Kalender werden beim Synchronisieren zurück in V-Planer übernommen.</span>
-            </div>
-          </div>
-
-          <div class="card setting-card backup-setting-card">
-            <h2>Backup & Wiederherstellung</h2>
-            <p class="setting-help">Sichere den kompletten strukturierten V-Planer-Datenbestand als JSON-Datei oder stelle ihn später wieder her.</p>
-
-            <div class="backup-action">
-              <div>
-                <b>Komplettes Backup exportieren</b>
-                <small>Mitglieder, Beziehungen, Haushalte, Verknüpfungen, Aufgaben, Projekte, Termine, Gruppen, Sitzungen, Vereinswissen, Ordner, Einstellungen und Dokument-Metadaten.</small>
-              </div>
-              <button class="btn primary" id="exportBackupBtn" type="button">Backup exportieren</button>
-            </div>
-
-            <div class="backup-action">
-              <div>
-                <b>Backup importieren</b>
-                <small>Ersetzt nach Sicherheitsabfrage den aktuellen Datenstand. Vor dem Import wird automatisch ein Sicherungsbackup erzeugt.</small>
-              </div>
-              <button class="btn secondary" id="importBackupBtn" type="button">Backup importieren</button>
-              <input id="backupImportInput" type="file" accept=".json,application/json" hidden>
-            </div>
-
-            <div class="backup-warning">
-              <b>Hinweis zu Google-Drive-Dateien</b>
-              <span>Das Backup enthält die vollständige V-Planer-Datenbank inklusive Ordnerstruktur und Dateiverweisen. Die eigentlichen hochgeladenen Word-/PDF-/Bilddateien bleiben in Google Drive gespeichert und werden nicht nochmals in die JSON-Datei eingebettet.</span>
-            </div>
-          </div>
-
-          <div class="card setting-card">
-            <h2>Speicher</h2>
-            <label>Eigenes Speicherlimit in GB<input id="storageLimit" type="number" min="1" max="100" step="1"></label>
-            <div class="switch-row"><div><b>Bilder komprimieren</b><small>Vor Upload automatisch verkleinern</small></div><label class="switch"><input id="compressImages" type="checkbox"><span></span></label></div>
-          </div>
-        </div>
-        <div class="settings-save"><button class="btn primary" id="saveSettingsBtn">Einstellungen speichern</button></div>
-      </section>
-    </div>
-  </main>
+<aside class="sidebar">
+<div class="brand">
+<img alt="V-Planer Logo" class="brand-logo" src="assets/v-planer-logo.png"/>
+<div class="brand-copy">
+<strong>V-Planer</strong>
+<small><span>Dein Verein.</span> Einfach organisiert.</small>
 </div>
-
-<div class="mobile-nav" aria-label="Mobile Hauptnavigation">
-  <button data-view="dashboard" aria-label="Übersicht">🏠<span>Start</span></button>
-  <button data-view="tasks" aria-label="Aufgaben">✅<span>Aufgaben</span></button>
-  <button data-view="projects" aria-label="Projekte">📁<span>Projekte</span></button>
-  <button data-view="calendar" aria-label="Kalender">📅<span>Kalender</span></button>
-  <button id="mobileMoreBtn" type="button" aria-label="Weitere Bereiche">☰<span>Mehr</span></button>
 </div>
-
-<div id="mobileMenuOverlay" class="mobile-menu-overlay" aria-hidden="true"></div>
-<aside id="mobileMenu" class="mobile-menu" aria-label="Weitere Bereiche" aria-hidden="true">
-  <div class="mobile-menu-head">
-    <div class="mobile-menu-brand"><img src="assets/v-planer-logo.png" alt=""><div><b>V-Planer</b><small>Dein Verein. Einfach organisiert.</small></div></div>
-    <button id="mobileMenuClose" class="icon-btn" type="button" aria-label="Menü schließen">×</button>
-  </div>
-  <div class="mobile-menu-scroll">
-    <div class="mobile-menu-section">Planung</div>
-    <button data-view="kanban">▦ Kanban</button>
-    <button data-view="year">🗓 Vereinsjahr</button>
-    <button data-view="archive">🗄️ Archiv</button>
-    <div class="mobile-menu-section" data-module="club">Verein</div>
-    <button data-view="members" data-module="club">👥 Mitglieder</button>
-    <button data-view="groups" data-module="club">🌳 Gruppen</button>
-    <button data-view="meetings" data-module="club">📝 Sitzungen & Beschlüsse</button>
-    <div class="mobile-menu-section" data-module="finance">Finanzen</div>
-    <button data-view="finance-kasse" data-module="finance">💶 KassenKumpel</button>
-    <button data-view="finance-fines" data-module="finance">⚠️ Strafen</button>
-    <div class="mobile-menu-section" data-module="documents">Dokumente</div>
-    <button data-view="documents" data-module="documents">📄 Dokumente & Bilder</button>
-    <button data-view="knowledge" data-module="documents">📚 Vereinswissen</button>
-    <div class="mobile-menu-section">System</div>
-    <button data-view="trash">🗑️ Papierkorb <span class="mobile-trash-count" id="mobileTrashCount"></span></button>
-    <button data-view="storage">☁️ Speicher & Sync</button>
-    <button data-view="settings">⚙️ Einstellungen</button>
-  </div>
+<nav id="mainNav">
+<button class="nav-btn active" data-view="dashboard">🏠 <span>Übersicht</span></button>
+<div class="nav-section">Planung</div>
+<button class="nav-btn" data-view="tasks">✅ <span>Aufgaben</span></button>
+<button class="nav-btn" data-view="projects">📁 <span>Projekte</span></button>
+<button class="nav-btn" data-view="kanban">▦ <span>Kanban</span></button>
+<button class="nav-btn" data-view="calendar">📅 <span>Kalender</span></button>
+<button class="nav-btn" data-view="year">🗓 <span>Vereinsjahr</span></button>
+<button class="nav-btn" data-view="archive">🗄️ <span>Archiv</span></button>
+<div class="nav-module" data-module="club">
+<div class="nav-section">Verein</div>
+<button class="nav-btn" data-view="members">👥 <span>Mitglieder</span></button>
+<button class="nav-btn" data-view="groups">🌳 <span>Gruppen &amp; Funktionen</span></button>
+<button class="nav-btn" data-view="meetings">📝 <span>Sitzungen &amp; Beschlüsse</span></button>
+</div>
+<div class="nav-module" data-module="finance">
+<div class="nav-section">Finanzen</div>
+<button class="nav-btn" data-view="finance-kasse">💶 <span>KassenKumpel</span></button>
+<button class="nav-btn" data-view="finance-fines">⚠️ <span>Strafen</span></button>
+</div>
+<div class="nav-module" data-module="documents">
+<div class="nav-section">Dokumente</div>
+<button class="nav-btn" data-view="documents">📄 <span>Dokumente &amp; Bilder</span></button>
+<button class="nav-btn" data-view="knowledge">📚 <span>Vereinswissen</span></button>
+</div>
+<div class="nav-section">System</div>
+<button class="nav-btn" data-view="trash">🗑️ <span>Papierkorb</span><span class="nav-count" id="trashNavCount"></span></button>
+<button class="nav-btn" data-view="settings">⚙️ <span>Einstellungen</span></button>
+</nav>
+<div class="sidebar-footer">
+<small>V-Planer Cloud · 1.8.0</small>
+</div>
 </aside>
-
-<dialog id="modal"><form method="dialog" class="modal"><div class="modal-head"><h2 id="modalTitle">Neu</h2><button value="cancel" class="icon-btn">×</button></div><div class="modal-body" id="modalBody"></div><div class="modal-actions"><button value="cancel" class="btn secondary">Abbrechen</button><button id="modalSave" value="default" class="btn primary">Speichern</button></div></form></dialog>
-<dialog id="detailModal"><form method="dialog" class="modal wide"><div class="modal-head"><h2 id="detailTitle">Details</h2><button value="cancel" class="icon-btn">×</button></div><div class="modal-body" id="detailBody"></div><div class="modal-actions"><button value="cancel" class="btn secondary">Schließen</button></div></form></dialog>
-
+<main class="main">
+<header class="topbar">
+<div class="top-title">
+<img alt="V-Planer" class="mobile-logo" src="assets/v-planer-logo.png"/>
+<div>
+<h1 id="pageTitle">Übersicht</h1>
+<div class="subtitle" id="pageSubtitle">Heute, diese Woche und alles Wichtige im Blick.</div>
+</div>
+</div>
+<div class="global-search" id="globalSearchWrap">
+<button aria-label="V-Planer durchsuchen" class="global-search-mobile-btn" id="globalSearchMobileBtn" type="button">⌕</button>
+<div class="global-search-field">
+<span aria-hidden="true">⌕</span>
+<input aria-label="V-Planer durchsuchen" autocomplete="off" id="globalSearchInput" placeholder="V-Planer durchsuchen …" type="search"/>
+<button aria-label="Suche leeren" id="globalSearchClear" type="button">×</button>
+</div>
+<div class="global-search-results" hidden="" id="globalSearchResults"></div>
+</div>
+<div class="top-actions">
+<div class="sync-indicator">
+<strong id="driveState">● Nur lokal</strong>
+<small id="lastSync">Noch nicht synchronisiert</small>
+</div>
+<button class="btn secondary" id="syncBtn">↻ Synchronisieren</button>
+<button class="btn primary" id="quickCreateBtn">+ Neu erstellen</button>
+</div>
+</header>
+<div class="content">
+<section class="view active" id="view-dashboard">
+<div class="alert-strip hidden" id="alertStrip"></div>
+<div class="metrics">
+<button aria-label="Zu den Aufgaben" class="card metric metric-link" data-go="tasks" type="button">
+<span>Offene Aufgaben</span><b id="metricOpenTasks">0</b><small id="metricTaskHint">Heute 0 · Woche 0</small><em>Aufgaben öffnen →</em>
+</button>
+<button aria-label="Zu den Projekten" class="card metric metric-link" data-go="projects" type="button">
+<span>Aktive Projekte</span><b id="metricProjects">0</b><small id="metricProjectHint">0 mit Zeitraum</small><em>Projekte öffnen →</em>
+</button>
+<button aria-label="Zu den Mitgliedern" class="card metric metric-link" data-go="members" type="button">
+<span>Mitglieder</span><b id="metricMembers">0</b><small id="metricMemberHint">0 aktiv</small><em>Mitglieder öffnen →</em>
+</button>
+</div>
+<div class="dash-grid two">
+<div class="card">
+<div class="card-head"><h2>Heute &amp; diese Woche</h2><button class="link-btn" data-go="tasks">Alle Aufgaben</button></div>
+<div class="card-body" id="dashboardTasks"></div>
+</div>
+<div class="card">
+<div class="card-head"><h2>Aktive Projekte</h2><button class="link-btn" data-go="projects">Alle Projekte</button></div>
+<div class="card-body" id="dashboardProjects"></div>
+</div>
+</div>
+<div class="dash-grid three">
+<div class="card">
+<div class="card-head"><h2>Geburtstage &amp; Jubiläen</h2><button class="link-btn" data-go="members">Mitglieder</button></div>
+<div class="card-body" id="dashboardBirthdays"></div>
+</div>
+<div class="card">
+<div class="card-head"><h2>Nächste Termine</h2><button class="link-btn" data-go="calendar">Kalender</button></div>
+<div class="card-body" id="dashboardEvents"></div>
+</div>
+<div class="card">
+<div class="card-head"><h2>Speicher &amp; Synchronisation</h2><button class="link-btn" data-settings-jump="sync" type="button">Einstellungen</button></div>
+<div class="card-body" id="dashboardStorage"></div>
+</div>
+</div>
+</section>
+<section class="view" id="view-tasks">
+<div class="toolbar">
+<input aria-label="Aufgaben durchsuchen" class="search" id="taskSearch" placeholder="Aufgaben durchsuchen …"/>
+<select aria-label="Aufgaben nach Status filtern" id="taskStatusFilter"><option value="">Alle Status</option><option value="open">Offen</option><option value="doing">In Arbeit</option><option value="wait">Warten</option><option value="done">Erledigt</option></select>
+<div class="task-sort-mobile">
+<select aria-label="Aufgaben sortieren" id="taskSortSelect">
+<option value="due">Fälligkeit</option>
+<option value="title">Aufgabe</option>
+<option value="project">Projekt</option>
+<option value="group">Gruppe</option>
+<option value="priority">Priorität</option>
+<option value="status">Status</option>
+</select>
+<button class="btn secondary" id="taskSortDir" type="button">↑ Aufsteigend</button>
+</div>
+<button class="btn primary" data-action="new-task">+ Aufgabe</button>
+</div>
+<div class="card table-card"><div class="table-wrap"><table class="table task-table"><thead><tr>
+<th aria-sort="none"><button class="table-sort" data-task-sort="title" type="button">Aufgabe</button></th>
+<th aria-sort="none"><button class="table-sort" data-task-sort="project" type="button">Projekt</button></th>
+<th aria-sort="none"><button class="table-sort" data-task-sort="group" type="button">Gruppe</button></th>
+<th aria-sort="ascending"><button class="table-sort active" data-task-sort="due" type="button">Fällig <span aria-hidden="true" class="sort-arrow">↑</span></button></th>
+<th aria-sort="none"><button class="table-sort" data-task-sort="priority" type="button">Priorität</button></th>
+<th aria-sort="none"><button class="table-sort" data-task-sort="status" type="button">Status</button></th>
+<th>Aktionen</th>
+</tr></thead><tbody id="taskTable"></tbody></table></div></div>
+</section>
+<section class="view" id="view-projects">
+<div class="toolbar">
+<input aria-label="Projekte durchsuchen" class="search" id="projectSearch" placeholder="Projekte durchsuchen …"/>
+<select aria-label="Projekte nach Status filtern" id="projectStatusFilter"><option value="">Alle Status</option><option value="planned">Geplant</option><option value="active">Aktiv</option><option value="paused">Pausiert</option><option value="closed">Abgeschlossen</option></select>
+<button class="btn primary" data-action="new-project">+ Projekt</button>
+</div>
+<div class="cards-grid" id="projectGrid"></div>
+</section>
+<section class="view" id="view-kanban"><div class="board" id="kanbanBoard"></div></section>
+<section class="view" id="view-calendar">
+<div class="toolbar calendar-view-toolbar">
+<div aria-label="Kalenderansicht" class="calendar-mode-toggle" role="group">
+<button class="btn secondary" data-calendar-mode="agenda" id="calendarAgendaMode" type="button">☷ Agenda</button>
+<button class="btn secondary" data-calendar-mode="month" id="calendarMonthMode" type="button">▦ Monat</button>
+</div>
+<button class="btn primary" data-action="new-event">+ Termin</button>
+</div>
+<div class="calendar-layout">
+<div class="card calendar-card">
+<div class="calendar-head">
+<button aria-label="Vorheriger Monat" class="calendar-nav-btn" id="prevMonth" type="button">‹</button>
+<div class="calendar-title-group">
+<h2 id="calendarTitle"></h2>
+<button class="calendar-today-btn" id="todayMonth" type="button">Heute</button>
+</div>
+<button aria-label="Nächster Monat" class="calendar-nav-btn" id="nextMonth" type="button">›</button>
+</div>
+<div aria-label="Kalenderlegende" class="calendar-legend">
+<span><i class="legend-dot event-dot"></i>Termin</span>
+<span><i class="legend-dot task-dot"></i>Aufgabe</span>
+<span><i class="legend-dot project-dot"></i>Projekt</span>
+<span><i class="legend-dot birthday-dot"></i>Geburtstag</span>
+</div>
+<div class="calendar-grid" id="calendarGrid"></div>
+<div class="calendar-agenda" id="calendarAgenda"></div>
+</div>
+<div class="card calendar-side-card"><div class="card-head"><h2>Nächste Einträge</h2></div><div class="card-body" id="calendarSideList"></div></div>
+</div>
+</section>
+<section class="view" id="view-year">
+<div class="card year-overview-head">
+<div class="calendar-head">
+<button aria-label="Vorheriges Jahr" class="calendar-nav-btn" id="prevYear" type="button">‹</button>
+<div class="calendar-title-group">
+<h2 id="yearTitle"></h2>
+<button class="calendar-today-btn" id="todayYear" type="button">Aktuelles Jahr</button>
+</div>
+<button aria-label="Nächstes Jahr" class="calendar-nav-btn" id="nextYear" type="button">›</button>
+</div>
+<div aria-label="Legende Vereinsjahr" class="calendar-legend year-legend">
+<span><i class="legend-dot event-dot"></i>Termin</span>
+<span><i class="legend-dot task-dot"></i>Aufgabe</span>
+<span><i class="legend-dot project-dot"></i>Projekt</span>
+<span><i class="legend-dot birthday-dot"></i>Geburtstag</span>
+<span><i class="legend-dot jubilee-dot"></i>Vereinsjubiläum</span>
+</div>
+<small class="muted">Alle datumsbezogenen Einträge des gewählten Jahres werden angezeigt. Ein Klick öffnet den zugehörigen Datensatz.</small>
+</div>
+<div class="year-grid" id="yearGrid"></div>
+</section>
+<section class="view" id="view-archive">
+<div class="archive-summary">
+<div class="card archive-metric"><span>Archivierte Aufgaben</span><b id="archiveTaskCount">0</b><small>Erledigte Aufgaben</small></div>
+<div class="card archive-metric"><span>Archivierte Projekte</span><b id="archiveProjectCount">0</b><small>Abgeschlossene Projekte</small></div>
+</div>
+<div class="archive-grid">
+<div class="card">
+<div class="card-head"><div><h2>Aufgabenarchiv</h2><small class="muted">Erledigte Aufgaben, die nicht mehr in den aktiven Listen erscheinen.</small></div></div>
+<div class="card-body archive-list" id="archiveTasks"></div>
+</div>
+<div class="card">
+<div class="card-head"><div><h2>Projektarchiv</h2><small class="muted">Abgeschlossene Projekte inklusive ihrer Historie.</small></div></div>
+<div class="card-body archive-list" id="archiveProjects"></div>
+</div>
+</div>
+</section>
+<section class="view finance-view" data-module="finance" id="view-finance-kasse">
+<div class="finance-kassen-head card">
+<div class="finance-kassen-brand">
+<img alt="KassenKumpel" src="finance/kassenkumpel/assets/kassenkumpel-logo-192.png"/>
+<div>
+<h2>KassenKumpel</h2>
+<p>Kassenbuch, Barkasse, Belege, Kassenabschlüsse, Auswertungen und KassenKumpel-Einstellungen im V-Planer-Finanzbereich.</p>
+<small id="kassenSyncState">KassenKumpel wird geladen …</small>
+</div>
+</div>
+<div class="finance-kassen-version">integriert · 1.1.1</div>
+</div>
+<div class="finance-frame-card card">
+<iframe class="finance-frame" id="kassenKumpelFrame" loading="lazy" src="finance/kassenkumpel/index.html?embed=1" title="KassenKumpel"></iframe>
+</div>
+</section>
+<section class="view finance-view" data-module="finance" id="view-finance-fines">
+<div class="finance-metrics">
+<div class="card finance-metric"><span>Offener Betrag</span><b id="fineOpenAmount">0,00 €</b><small>Noch nicht bezahlt</small></div>
+<div class="card finance-metric"><span>Bezahlt dieses Jahr</span><b id="finePaidYear">0,00 €</b><small>Eingegangene Strafen</small></div>
+<div class="card finance-metric"><span>Offene Strafen</span><b id="fineOpenCount">0</b><small>Zu bearbeiten</small></div>
+<div class="card finance-metric"><span>Strafen gesamt</span><b id="fineTotalCount">0</b><small>ohne gelöschte Einträge</small></div>
+</div>
+<div class="toolbar">
+<input aria-label="Strafen durchsuchen" class="search" id="fineSearch" placeholder="Strafen durchsuchen …"/>
+<select aria-label="Strafen nach Status filtern" id="fineStatusFilter"><option value="">Alle Status</option><option value="open">Offen</option><option value="paid">Bezahlt</option><option value="waived">Erlassen</option></select>
+<div class="fine-sort-mobile">
+<select aria-label="Strafen sortieren" id="fineSortSelect">
+<option value="date">Datum</option><option value="member">Mitglied</option><option value="reason">Grund</option><option value="amount">Betrag</option><option value="due">Fälligkeit</option><option value="status">Status</option>
+</select>
+<button class="btn secondary" id="fineSortDir" type="button">↓ Absteigend</button>
+</div>
+<button class="btn secondary fine-catalog-open-btn" id="fineCatalogBtn" type="button">📋 Strafkatalog</button>
+<button class="btn primary" id="newFineBtn" type="button">+ Strafe</button>
+</div>
+<div class="fine-open-notice" hidden="" id="fineOpenNotice"></div>
+<div class="card table-card"><div class="table-wrap"><table class="table fine-table">
+<thead><tr>
+<th aria-sort="descending"><button class="table-sort active" data-fine-sort="date" type="button">Datum <span class="sort-arrow">↓</span></button></th>
+<th aria-sort="none"><button class="table-sort" data-fine-sort="member" type="button">Mitglied</button></th>
+<th aria-sort="none"><button class="table-sort" data-fine-sort="reason" type="button">Grund</button></th>
+<th aria-sort="none"><button class="table-sort" data-fine-sort="amount" type="button">Betrag</button></th>
+<th aria-sort="none"><button class="table-sort" data-fine-sort="due" type="button">Fällig</button></th>
+<th aria-sort="none"><button class="table-sort" data-fine-sort="status" type="button">Status</button></th>
+<th>Aktionen</th>
+</tr></thead><tbody id="fineTable"></tbody>
+</table></div></div>
+</section>
+<section class="view" id="view-members">
+<div class="toolbar">
+<input aria-label="Mitglieder durchsuchen" class="search" id="memberSearch" placeholder="Mitglieder suchen …"/>
+<select aria-label="Mitglieder nach Status filtern" id="memberStatusFilter"><option value="">Alle Status</option><option value="active">Aktiv</option><option value="inactive">Deaktiviert</option><option value="passive">Passiv</option><option value="deceased">Verstorben</option></select>
+<select aria-label="Ehrenmitglieder filtern" id="memberHonoraryFilter"><option value="">Alle Mitglieder</option><option value="yes">Nur Ehrenmitglieder</option><option value="no">Ohne Ehrenmitglieder</option></select>
+<div class="member-sort-mobile">
+<select aria-label="Mitglieder sortieren" id="memberSortSelect">
+<option value="number">Nummer</option>
+<option value="name">Name</option>
+<option value="status">Status</option>
+<option value="age">Alter</option>
+<option value="groups">Gruppen</option>
+<option value="next">Nächster Termin</option>
+</select>
+<button class="btn secondary" id="memberSortDir" type="button">↑ Aufsteigend</button>
+</div>
+<button class="btn secondary" id="memberImportBtn" type="button">⇧ Import</button>
+<button class="btn secondary" id="memberExportBtn" type="button">⇩ Export</button>
+<button class="btn secondary" id="householdManagerBtn" type="button">⌂ Haushalte</button>
+<input accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden="" id="memberImportInput" type="file"/>
+<button class="btn primary" data-action="new-member">+ Mitglied</button>
+</div>
+<div class="member-layout">
+<div class="card table-card"><div class="table-wrap"><table class="table member-table"><thead><tr>
+<th aria-sort="none"><button class="table-sort" data-member-sort="number" type="button">Nr.</button></th>
+<th aria-sort="ascending"><button class="table-sort active" data-member-sort="name" type="button">Name <span aria-hidden="true" class="sort-arrow">↑</span></button></th>
+<th aria-sort="none"><button class="table-sort" data-member-sort="status" type="button">Status</button></th>
+<th aria-sort="none"><button class="table-sort" data-member-sort="age" type="button">Alter</button></th>
+<th aria-sort="none"><button class="table-sort" data-member-sort="groups" type="button">Gruppen</button></th>
+<th aria-sort="none"><button class="table-sort" data-member-sort="next" type="button">Nächster Termin</button></th>
+</tr></thead><tbody id="memberTable"></tbody></table></div></div>
+<div class="card member-detail"><div class="card-head"><h2>Mitglied</h2></div><div class="card-body" id="memberDetail"></div></div>
+</div>
+</section>
+<section class="view" id="view-groups">
+<div class="toolbar">
+<button class="btn primary" data-action="new-group">+ Gruppe</button>
+<button class="btn secondary" id="newFunctionBtn">+ Funktion</button>
+</div>
+<div class="group-layout">
+<div class="card"><div class="card-head"><h2>Gruppenstruktur</h2></div><div class="card-body tree" id="groupTree"></div></div>
+<div class="card"><div class="card-head"><h2 id="groupDetailTitle">Gruppendetails</h2><div class="head-actions"><button aria-label="Verknüpfungen der Gruppe öffnen" class="link-clip-btn" id="linkGroupBtn" title="Verknüpfungen" type="button">📎</button><button class="btn tiny secondary" id="editGroupBtn">Bearbeiten</button><button class="btn tiny danger" id="deleteGroupBtn">Löschen</button></div></div><div class="card-body" id="groupDetail"></div></div>
+</div><div class="card function-overview-card">
+<div class="card-head function-overview-head">
+<div>
+<h2>Funktionen &amp; Ämter</h2>
+<small class="muted">Wer übernimmt im Verein welches Amt oder welche fachliche Rolle – aktuell, künftig oder früher?</small>
+</div>
+<button class="btn primary" id="newFunctionOverviewBtn" type="button">+ Funktion / Amt</button>
+</div>
+<div class="card-body">
+<div class="function-purpose-grid">
+<div><span>1</span><b>Amt festlegen</b><small>z. B. Vorsitz, Kasse, Trainer oder Ansprechpartner.</small></div>
+<div><span>2</span><b>Mit Mitglied verbinden</b><small>Die Person wird nicht doppelt gepflegt.</small></div>
+<div><span>3</span><b>Zeitraum dokumentieren</b><small>Beginn und Ende bilden Wechsel und Historie ab.</small></div>
+</div>
+<details class="function-help-box">
+<summary>Wofür brauche ich Funktionen?</summary>
+<p>Funktionen sind <strong>Ämter und Zuständigkeiten</strong>, keine Benutzerrechte. Beispiele sind 1. Vorsitz, Kassenwart, Trainer, Betreuer oder Ansprechpartner. Sie verknüpfen ein Mitglied mit einer Rolle und optional einer Gruppe sowie einem Zeitraum. Die Vereinsdaten nutzen diese Funktionen z. B. für Vorsitz, Schriftführung und Kasse.</p>
+</details>
+<div class="toolbar function-overview-toolbar">
+<input aria-label="Funktionen oder Personen durchsuchen" class="search" id="functionSearch" placeholder="Funktionen oder Personen suchen …"/>
+<select aria-label="Funktionen filtern" id="functionStatusFilter"><option value="">Alle Zeiträume</option><option value="active">Aktuell</option><option value="upcoming">Künftig</option><option value="former">Früher</option><option value="vacant">Unbesetzt</option></select>
+</div>
+<div class="function-overview-list" id="functionOverviewList"></div>
+</div>
+</div>
+</section>
+<section class="view" id="view-meetings">
+<div class="toolbar">
+<button class="btn primary" data-action="new-meeting">+ Sitzung</button>
+<button class="btn secondary" data-new-folder="meetings" type="button">+ Ordner</button>
+</div>
+<div class="content-browser-layout">
+<aside class="card folder-panel">
+<div class="card-head"><h2>Ordner</h2></div>
+<div class="card-body folder-tree" id="meetingFolderTree"></div>
+</aside>
+<div class="browser-main">
+<div class="card folder-toolbar">
+<div><small class="muted">Aktueller Ordner</small><div class="folder-breadcrumb" id="meetingFolderPath"></div></div>
+<div class="folder-toolbar-actions">
+<button class="btn tiny secondary folder-export-btn" data-export-folder="meetings" type="button">Exportieren</button>
+<button class="btn tiny secondary" data-rename-folder="meetings" type="button">Umbenennen</button>
+<button class="btn tiny danger" data-delete-folder="meetings" type="button">Ordner löschen</button>
+</div>
+<div aria-live="polite" class="folder-export-status" data-export-status="meetings"></div>
+</div>
+<div class="card upload-card"><div class="upload-zone">
+<div><h3>Datei ablegen</h3><p>Word, PDF, Excel, Bilder und weitere Dateien im aktuellen Ordner. Ganze Ordner können inklusive Unterordnern übernommen werden.</p></div>
+<input aria-label="Dateien für Sitzungen &amp; Beschlüsse auswählen" id="meetingFileInput" multiple="" type="file"/>
+<input class="folder-upload-input" directory="" id="meetingFolderInput" multiple="" type="file" webkitdirectory=""/>
+<button class="btn secondary" id="meetingFolderUploadBtn" type="button">Ordner hochladen</button>
+<div aria-live="polite" class="folder-upload-status" id="meetingFolderUploadStatus"></div>
+<button class="btn primary" id="meetingUploadBtn" type="button">In Drive hochladen</button>
+</div></div>
+<div class="browser-section-title"><h2>Sitzungen &amp; Beschlüsse</h2><span class="mini-meta" id="meetingFolderCount"></span></div>
+<div class="cards-grid" id="meetingGrid"></div>
+<div class="browser-section-title"><h2>Dateien</h2></div>
+<div class="card table-card"><div class="table-wrap"><table class="table area-file-table"><thead><tr><th>Name</th><th>Typ</th><th>Größe</th><th>Datum</th><th></th></tr></thead><tbody id="meetingFileTable"></tbody></table></div></div>
+</div>
+</div>
+</section>
+<section class="view" id="view-documents">
+<div class="toolbar">
+<input aria-label="Dateien im aktuellen Ordner durchsuchen" class="search" id="documentSearch" placeholder="Dateien im aktuellen Ordner durchsuchen …"/>
+<button class="btn secondary" data-new-folder="documents" type="button">+ Ordner</button>
+</div>
+<div class="content-browser-layout">
+<aside class="card folder-panel">
+<div class="card-head"><h2>Ordner</h2></div>
+<div class="card-body folder-tree" id="documentFolderTree"></div>
+</aside>
+<div class="browser-main">
+<div class="card folder-toolbar">
+<div><small class="muted">Aktueller Ordner</small><div class="folder-breadcrumb" id="documentFolderPath"></div></div>
+<div class="folder-toolbar-actions">
+<button class="btn tiny secondary folder-export-btn" data-export-folder="documents" type="button">Exportieren</button>
+<button class="btn tiny secondary" data-rename-folder="documents" type="button">Umbenennen</button>
+<button class="btn tiny danger" data-delete-folder="documents" type="button">Ordner löschen</button>
+</div>
+<div aria-live="polite" class="folder-export-status" data-export-status="documents"></div>
+</div>
+<div class="card upload-card"><div class="upload-zone">
+<div><h3>Dateien ablegen</h3><p>PDF, Word, Excel, Präsentationen, Bilder und andere Vereinsdateien. Die Einordnung erfolgt ausschließlich über deine Ordnerstruktur – zusätzliche Kategorien sind nicht nötig.</p></div>
+<input aria-label="Dateien für Dokumente &amp; Bilder auswählen" id="fileInput" multiple="" type="file"/>
+<input class="folder-upload-input" directory="" id="documentFolderInput" multiple="" type="file" webkitdirectory=""/>
+<button class="btn secondary" id="documentFolderUploadBtn" type="button">Ordner hochladen</button>
+<div aria-live="polite" class="folder-upload-status" id="documentFolderUploadStatus"></div>
+<button class="btn primary" id="uploadBtn" type="button">In Drive hochladen</button>
+</div></div>
+<div class="browser-section-title"><h2>Dateien</h2><span class="mini-meta" id="documentFolderCount"></span></div>
+<div class="card table-card"><div class="table-wrap"><table class="table area-file-table"><thead><tr><th>Name</th><th>Typ</th><th>Größe</th><th>Datum</th><th></th></tr></thead><tbody id="docTable"></tbody></table></div></div>
+</div>
+</div>
+</section>
+<section class="view" id="view-knowledge">
+<div class="toolbar">
+<input aria-label="Vereinswissen im aktuellen Ordner durchsuchen" class="search" id="knowledgeSearch" placeholder="Vereinswissen im aktuellen Ordner durchsuchen …"/>
+<button class="btn primary" data-action="new-knowledge">+ Eintrag</button>
+<button class="btn secondary" data-new-folder="knowledge" type="button">+ Ordner</button>
+</div>
+<div class="content-browser-layout">
+<aside class="card folder-panel">
+<div class="card-head"><h2>Ordner</h2></div>
+<div class="card-body folder-tree" id="knowledgeFolderTree"></div>
+</aside>
+<div class="browser-main">
+<div class="card folder-toolbar">
+<div><small class="muted">Aktueller Ordner</small><div class="folder-breadcrumb" id="knowledgeFolderPath"></div></div>
+<div class="folder-toolbar-actions">
+<button class="btn tiny secondary folder-export-btn" data-export-folder="knowledge" type="button">Exportieren</button>
+<button class="btn tiny secondary" data-rename-folder="knowledge" type="button">Umbenennen</button>
+<button class="btn tiny danger" data-delete-folder="knowledge" type="button">Ordner löschen</button>
+</div>
+<div aria-live="polite" class="folder-export-status" data-export-status="knowledge"></div>
+</div>
+<div class="card upload-card"><div class="upload-zone">
+<div><h3>Datei zum Vereinswissen ablegen</h3><p>Zum Beispiel Anleitungen, Word-Dateien, PDFs oder Vorlagen. Ganze Ordner können inklusive Unterordnern hochgeladen werden.</p></div>
+<input aria-label="Dateien für Vereinswissen auswählen" id="knowledgeFileInput" multiple="" type="file"/>
+<input class="folder-upload-input" directory="" id="knowledgeFolderInput" multiple="" type="file" webkitdirectory=""/>
+<button class="btn secondary" id="knowledgeFolderUploadBtn" type="button">Ordner hochladen</button>
+<div aria-live="polite" class="folder-upload-status" id="knowledgeFolderUploadStatus"></div>
+<button class="btn primary" id="knowledgeUploadBtn" type="button">In Drive hochladen</button>
+</div></div>
+<div class="browser-section-title"><h2>Wissenseinträge</h2><span class="mini-meta" id="knowledgeFolderCount"></span></div>
+<div class="cards-grid" id="knowledgeGrid"></div>
+<div class="browser-section-title"><h2>Dateien</h2></div>
+<div class="card table-card"><div class="table-wrap"><table class="table area-file-table"><thead><tr><th>Name</th><th>Typ</th><th>Größe</th><th>Datum</th><th></th></tr></thead><tbody id="knowledgeFileTable"></tbody></table></div></div>
+</div>
+</div>
+</section>
+<section class="view" id="view-trash">
+<div class="toolbar trash-toolbar">
+<input aria-label="Papierkorb durchsuchen" class="search" id="trashSearch" placeholder="Papierkorb durchsuchen …"/>
+<select aria-label="Papierkorb filtern" id="trashTypeFilter">
+<option value="">Alle Bereiche</option>
+<option value="tasks">Aufgaben</option>
+<option value="projects">Projekte</option>
+<option value="events">Termine</option>
+<option value="members">Mitglieder</option>
+<option value="groups">Gruppen</option>
+<option value="functions">Funktionen</option>
+<option value="meetings">Sitzungen &amp; Beschlüsse</option>
+<option value="knowledge">Vereinswissen</option>
+<option value="documents">Dokumente &amp; Bilder</option>
+<option value="folders">Ordner</option>
+<option value="fines">Strafen</option>
+<option value="households">Haushalte</option>
+</select>
+<button class="btn danger" id="emptyTrashBtn" type="button">Papierkorb leeren</button>
+</div>
+<div class="card trash-info">
+<div><b>Papierkorb</b><span>Gelöschte Inhalte können wiederhergestellt oder endgültig entfernt werden. Ordner werden inklusive ihrer gelöschten Unterstruktur behandelt.</span></div>
+<strong id="trashCount">0</strong>
+</div>
+<div class="trash-list" id="trashList"></div>
+</section>
+<section class="view" id="view-settings"><div class="settings-shell"><aside aria-label="Einstellungsbereiche" class="card settings-section-nav">
+<div class="settings-nav-head"><div><b>Einstellungen</b><small>Bereich auswählen</small></div><button aria-label="Einstellungsmenü einklappen" id="settingsNavCollapse" title="Einstellungsmenü einklappen" type="button">‹</button></div>
+<nav>
+<button data-settings-section="club" type="button">🏛️ <span>Vereinsdaten</span></button>
+<button data-settings-section="organization" type="button">👥 <span>Verein &amp; Mitglieder</span></button>
+<button data-settings-section="appearance" type="button">🎨 <span>Darstellung &amp; Bereiche</span></button>
+<button data-settings-section="reminders" type="button">🔔 <span>Erinnerungen</span></button>
+<button data-settings-section="calendar" type="button">📅 <span>Google Kalender</span></button>
+<button data-settings-section="sync" type="button">☁️ <span>Speicher &amp; Sync</span></button>
+<button data-settings-section="backup" type="button">🛟 <span>Backup &amp; Daten</span></button>
+</nav>
+</aside><details class="settings-mobile-menu card" id="settingsMobileMenu">
+<summary><span>⚙️ Einstellungsbereich</span><b id="settingsMobileCurrent">Vereinsdaten</b></summary>
+<nav>
+<button data-settings-section="club" type="button">🏛️ Vereinsdaten</button>
+<button data-settings-section="organization" type="button">👥 Verein &amp; Mitglieder</button>
+<button data-settings-section="appearance" type="button">🎨 Darstellung &amp; Bereiche</button>
+<button data-settings-section="reminders" type="button">🔔 Erinnerungen</button>
+<button data-settings-section="calendar" type="button">📅 Google Kalender</button>
+<button data-settings-section="sync" type="button">☁️ Speicher &amp; Sync</button>
+<button data-settings-section="backup" type="button">🛟 Backup &amp; Daten</button>
+</nav>
+</details><div class="settings-section-content"><section class="settings-section-panel" data-settings-panel="club"><div class="settings-panel-head"><h2>Vereinsdaten</h2><p>Zentrale Stammdaten, Anschrift und verantwortliche Ämter.</p></div><div class="settings-grid settings-panel-grid"><div class="card setting-card club-masterdata-card settings-wide">
+<div class="club-masterdata-head">
+<div>
+<h2>Vereinsdaten</h2>
+<p class="setting-help">Zentrale Stammdaten des Vereins. Diese Angaben können später für Ausweise, Dokumente, Exporte und Vorlagen verwendet werden.</p>
+</div>
+<span class="settings-version-badge">V-Planer 1.8.0</span>
+</div>
+<div class="club-data-layout">
+<section class="club-data-section club-data-brand">
+<h3>Grunddaten</h3>
+<div class="club-logo-editor">
+<div aria-label="Vereinslogo Vorschau" class="club-logo-preview" id="clubLogoPreview"></div>
+<div class="club-logo-controls">
+<label>Vereinslogo
+                      <input accept="image/*" id="clubLogoInput" type="file"/>
+</label>
+<button class="btn tiny secondary" id="clubLogoRemoveBtn" type="button">Logo entfernen</button>
+<small>Wird komprimiert in den V-Planer-Stammdaten gespeichert.</small>
+</div>
+</div>
+<div class="club-data-fields two">
+<label>Offizieller Vereinsname<input autocomplete="organization" id="clubName"/></label>
+<label>Kurzname / Abkürzung<input id="clubShortName" placeholder="z. B. TSV Musterstadt"/></label>
+<label>Gründungsdatum<input id="clubFoundedDate" type="date"/></label>
+<label>Rechtsform<input id="clubLegalForm" list="clubLegalForms" placeholder="z. B. e. V."/></label>
+<datalist id="clubLegalForms"><option value="e. V."></option><option value="nicht eingetragener Verein"></option><option value="gGmbH"></option><option value="Sonstige"></option></datalist>
+</div>
+</section>
+<section class="club-data-section">
+<h3>Anschrift &amp; Kontakt</h3>
+<div class="club-data-fields two">
+<label class="full">Straße / Hausnummer<input autocomplete="street-address" id="clubStreet"/></label>
+<label>PLZ<input autocomplete="postal-code" id="clubZip" inputmode="numeric"/></label>
+<label>Ort<input autocomplete="address-level2" id="clubCity"/></label>
+<label>E-Mail<input autocomplete="email" id="clubEmail" type="email"/></label>
+<label>Telefon<input autocomplete="tel" id="clubPhone" type="tel"/></label>
+<label class="full">Website<input id="clubWebsite" placeholder="https://…" type="url"/></label>
+</div>
+</section>
+<section class="club-data-section">
+<h3>Register &amp; Verwaltung</h3>
+<div class="club-data-fields two">
+<label>Vereinsregister-Nr.<input id="clubRegisterNo" placeholder="z. B. VR 1234"/></label>
+<label>Registergericht<input id="clubRegisterCourt"/></label>
+<label>Steuernummer<input id="clubTaxNo"/></label>
+<label>Zuständiges Finanzamt<input id="clubTaxOffice"/></label>
+<label>Geschäftsjahr von<input id="clubFiscalStart" placeholder="01.01."/></label>
+<label>Geschäftsjahr bis<input id="clubFiscalEnd" placeholder="31.12."/></label>
+</div>
+</section>
+<section class="club-data-section">
+<h3>Vereinsheim / Standardort</h3>
+<div class="club-data-fields two">
+<label class="full">Bezeichnung<input id="clubVenueName" placeholder="z. B. Vereinsheim"/></label>
+<label class="full">Straße / Hausnummer<input id="clubVenueStreet"/></label>
+<label>PLZ<input id="clubVenueZip" inputmode="numeric"/></label>
+<label>Ort<input id="clubVenueCity"/></label>
+</div>
+</section>
+<section class="club-data-section club-data-functions">
+<h3>Verantwortliche Funktionen</h3>
+<p class="setting-help">Die Personen werden nicht doppelt gepflegt. Verknüpfe hier bereits angelegte Funktionen aus dem Vereinsbereich.</p>
+<div class="club-data-fields three">
+<label>Vorsitz<select id="clubChairFunction"></select></label>
+<label>Schriftführung<select id="clubSecretaryFunction"></select></label>
+<label>Kasse<select id="clubTreasurerFunction"></select></label>
+</div>
+<div class="club-function-note">Ändert sich die Besetzung einer Funktion, verwendet V-Planer automatisch die aktuelle verknüpfte Person.</div>
+</section>
+<section class="club-data-section">
+<h3>Weitere Angaben</h3>
+<div class="club-data-fields">
+<label>Kurze Vereinsbeschreibung<textarea id="clubDescription" placeholder="Was macht den Verein aus?" rows="4"></textarea></label>
+<label>Interne Hinweise<textarea id="clubInternalNotes" placeholder="Nur für die interne Organisation relevante Hinweise …" rows="4"></textarea></label>
+</div>
+</section>
+</div>
+</div></div></section><section class="settings-section-panel" data-settings-panel="organization"><div class="settings-panel-head"><h2>Verein &amp; Mitglieder</h2><p>Persönliches Profil, Ehrenmitgliedschaft und Gruppenlogik.</p></div><div class="settings-grid settings-panel-grid"><div class="card setting-card">
+<h2>Eigenes Profil</h2>
+<p class="setting-help">Persönliche Angaben des aktuell verwendeten V-Planer-Profils. Diese gehören nicht zu den Vereinsstammdaten.</p>
+<label>Eigene Rolle<input id="userRole" placeholder="z. B. Vorsitzender"/></label>
+</div><div class="card setting-card" data-module="club">
+<h2>Ehrenmitglieder</h2>
+<p class="setting-help">Lege fest, wie die Kennzeichnung „Ehrenmitglied“ im Mitgliederbereich verwendet wird.</p>
+<div class="switch-row"><div><b>Ehrenmitglieder automatisch beitragsfrei</b><small>Markiert Ehrenmitglieder im V-Planer als beitragsfrei. Es werden dadurch keine automatischen Bank- oder Kassenbuchungen erzeugt.</small></div><label class="switch"><input id="honoraryContributionFree" type="checkbox"/><span></span></label></div>
+</div><div class="card setting-card group-types-setting" data-module="club">
+<h2>Gruppenarten</h2>
+<p class="setting-help">Lege fest, welche Arten beim Erstellen einer Gruppe zur Auswahl stehen. Du kannst die Namen ändern, Einträge hinzufügen oder entfernen und die Reihenfolge anpassen.</p>
+<div class="group-type-list" id="groupTypeList"></div>
+<button class="btn secondary group-type-add" id="addGroupTypeBtn" type="button">+ Gruppenart hinzufügen</button>
+<p class="setting-help group-type-note">Das Entfernen einer Gruppenart löscht keine bereits vorhandenen Gruppen. Bestehende Einträge behalten ihre bisherige Bezeichnung.</p>
+</div></div></section><section class="settings-section-panel" data-settings-panel="appearance"><div class="settings-panel-head"><h2>Darstellung &amp; Bereiche</h2><p>Oberfläche skalieren und nicht benötigte Bereiche ausblenden.</p></div><div class="settings-grid settings-panel-grid"><div class="card setting-card">
+<h2>Darstellung &amp; Skalierung</h2>
+<p class="setting-help">Passe die Größe der gesamten V-Planer-Oberfläche an dein Gerät und deine bevorzugte Darstellung an.</p>
+<label>Oberflächengröße <b id="uiScaleLabel">100%</b>
+<input id="uiScale" max="125" min="80" step="5" type="range" value="100"/>
+</label>
+<div class="scale-guide"><span>80%</span><span>100%</span><span>125%</span></div>
+<button class="btn secondary" id="resetUiScaleBtn" type="button">Auf 100% zurücksetzen</button>
+</div><div class="card setting-card">
+<h2>Bereiche ein-/ausblenden</h2>
+<p class="setting-help">Die Daten bleiben erhalten. Es wird nur die Navigation ausgeblendet.</p>
+<div class="switch-row"><div><b>Verein</b><small>Mitglieder, Gruppen, Sitzungen</small></div><label class="switch"><input id="moduleClub" type="checkbox"/><span></span></label></div>
+<div class="switch-row"><div><b>Finanzen</b><small>KassenKumpel und Strafen</small></div><label class="switch"><input id="moduleFinance" type="checkbox"/><span></span></label></div>
+<div class="switch-row"><div><b>Dokumente</b><small>Dokumente, Bilder, Vereinswissen</small></div><label class="switch"><input id="moduleDocuments" type="checkbox"/><span></span></label></div>
+</div></div></section><section class="settings-section-panel" data-settings-panel="reminders"><div class="settings-panel-head"><h2>Erinnerungen</h2><p>Warnstufen, Geburtstage und Vereinsjubiläen konfigurieren.</p></div><div class="settings-grid settings-panel-grid"><div class="card setting-card">
+<h2>Warnungen &amp; Erinnerungen</h2>
+<p class="setting-help">Einfaches 3-Stufen-System für Aufgaben, Projekte und Termine.</p>
+<div class="switch-row"><div><b>Warnsystem aktiv</b><small>Fälligkeiten farblich hervorheben</small></div><label class="switch"><input id="reminderEnabled" type="checkbox"/><span></span></label></div>
+<label>Hinweis ab <b id="infoDaysLabel">14</b> Tagen vorher<input id="infoDays" max="60" min="1" type="range"/></label>
+<label>Warnung ab <b id="warningDaysLabel">7</b> Tagen vorher<input id="warningDays" max="30" min="1" type="range"/></label>
+<label>Alarm ab <b id="alarmDaysLabel">2</b> Tagen vorher<input id="alarmDays" max="14" min="0" type="range"/></label>
+<div class="switch-row"><div><b>Geburtstage in dieser Woche</b><small>Hinweis auf der Übersicht</small></div><label class="switch"><input id="birthdayWeekReminder" type="checkbox"/><span></span></label></div>
+<div class="switch-row"><div><b>Runde Geburtstage hervorheben</b><small>Besondere Geburtstage auf der Übersicht deutlich markieren</small></div><label class="switch"><input id="roundBirthdayReminder" type="checkbox"/><span></span></label></div>
+<label>Runde Geburtstagsalter
+              <input id="roundBirthdayAgesInput" inputmode="numeric" placeholder="z. B. 20, 30, 40, 50, 60, 70, 80, 90, 100" type="text"/>
+<small class="setting-help-inline">Kommagetrennt. Diese Altersstufen werden als runder Geburtstag hervorgehoben.</small>
+</label>
+<div class="switch-row"><div><b>Jubiläen erinnern</b><small>Wichtige Eintrittsjubiläen auf der Übersicht anzeigen</small></div><label class="switch"><input id="jubileeReminder" type="checkbox"/><span></span></label></div>
+<label>Wichtige Jubiläumsjahre
+              <input id="jubileeYearsInput" inputmode="numeric" placeholder="z. B. 10, 20, 25, 30, 40, 50" type="text"/>
+<small class="setting-help-inline">Kommagetrennt. Diese Jahre werden auf der Übersicht und im Vereinsjahr als Jubiläum berücksichtigt.</small>
+</label>
+</div></div></section><section class="settings-section-panel" data-settings-panel="calendar"><div class="settings-panel-head"><h2>Google Kalender</h2><p>Kalenderverbindung und zu synchronisierende Inhalte verwalten.</p></div><div class="settings-grid settings-panel-grid"><div class="card setting-card calendar-sync-card" id="calendarSyncCard">
+<h2>Google Kalender</h2>
+<p class="setting-help">Zwei-Wege-Synchronisierung mit dem eigenen Google-Kalender „V-Planer“. Änderungen an Terminen werden in beide Richtungen abgeglichen; neue Termine im Google-Kalender werden automatisch in V-Planer übernommen. Aufgaben und Projekte werden ebenfalls abgeglichen, soweit ihre Kalenderdarstellung dies zulässt.</p>
+<div class="calendar-sync-state" id="calendarConnectionState">Google Kalender noch nicht verbunden</div>
+<div class="calendar-sync-meta" id="calendarSyncMeta">Noch nicht synchronisiert</div>
+<div class="switch-row">
+<div><b>Kalendersynchronisierung aktiv</b><small>Änderungen bei bestehender Verbindung in beide Richtungen abgleichen</small></div>
+<label class="switch"><input id="calendarSyncEnabled" type="checkbox"/><span></span></label>
+</div>
+<div class="switch-row">
+<div><b>Termine synchronisieren</b><small>Mit Von-/Bis-Datum und Uhrzeiten</small></div>
+<label class="switch"><input id="calendarSyncEvents" type="checkbox"/><span></span></label>
+</div>
+<div class="switch-row">
+<div><b>Geburtstage synchronisieren</b><small>Als jährliche ganztägige Einträge aus den Mitgliedsdaten</small></div>
+<label class="switch"><input id="calendarSyncBirthdays" type="checkbox"/><span></span></label>
+</div>
+<div class="switch-row">
+<div><b>Aufgaben synchronisieren</b><small>Als ganztägiger Eintrag am Fälligkeitsdatum</small></div>
+<label class="switch"><input id="calendarSyncTasks" type="checkbox"/><span></span></label>
+</div>
+<div class="switch-row">
+<div><b>Projekte synchronisieren</b><small>Als ganztägiger Eintrag über den Projektzeitraum</small></div>
+<label class="switch"><input id="calendarSyncProjects" type="checkbox"/><span></span></label>
+</div>
+<label>Kalendername<input id="calendarName" value="V-Planer"/></label>
+<div class="calendar-sync-actions">
+<button class="btn primary" id="connectCalendarBtn" type="button">Google Kalender verbinden</button>
+<button class="btn secondary" id="disconnectCalendarBtn" type="button">Verbindung trennen</button>
+</div>
+<div class="calendar-sync-note">
+<b>Einmalige Google-Cloud-Einrichtung</b>
+<span>Im selben Google-Cloud-Projekt wie für Drive muss zusätzlich die <strong>Google Calendar API</strong> aktiviert sein. V-Planer verwaltet ausschließlich den von V-Planer angelegten Kalender. Neue oder geänderte Termine in diesem Kalender werden beim Synchronisieren zurück in V-Planer übernommen.</span>
+</div>
+</div></div></section><section class="settings-section-panel" data-settings-panel="sync"><div class="settings-panel-head"><h2>Speicher &amp; Sync</h2><p>Speicherverbrauch, Google Drive und Upload-Verhalten an einem Ort.</p></div><div class="settings-grid settings-panel-grid"><div class="card setting-card settings-sync-structured-card"><div class="card-head"><h2>Speicherübersicht</h2></div><div class="card-body" id="storageDetail"></div></div><div class="card setting-card settings-sync-structured-card"><div class="card-head"><h2>Google Drive</h2></div><div class="card-body"><div class="notice" id="driveInfo">Noch nicht verbunden.</div><div class="button-row"><button class="btn primary" id="connectDriveBtn">Google Drive verbinden</button><button class="btn secondary" id="syncNowBtn">Jetzt synchronisieren</button></div><div class="meta-box"><b>OAuth Client-ID</b><div id="clientIdDisplay"></div></div></div></div><div class="card setting-card">
+<h2>Speicher</h2>
+<label>Eigenes Speicherlimit in GB<input id="storageLimit" max="100" min="1" step="1" type="number"/></label>
+<div class="switch-row"><div><b>Bilder komprimieren</b><small>Vor Upload automatisch verkleinern</small></div><label class="switch"><input id="compressImages" type="checkbox"/><span></span></label></div>
+</div></div></section><section class="settings-section-panel" data-settings-panel="backup"><div class="settings-panel-head"><h2>Backup &amp; Daten</h2><p>Datenbestand sichern oder aus einem V-Planer-Backup wiederherstellen.</p></div><div class="settings-grid settings-panel-grid"><div class="card setting-card backup-setting-card">
+<h2>Backup &amp; Wiederherstellung</h2>
+<p class="setting-help">Sichere den kompletten strukturierten V-Planer-Datenbestand als JSON-Datei oder stelle ihn später wieder her.</p>
+<div class="backup-action">
+<div>
+<b>Komplettes Backup exportieren</b>
+<small>Mitglieder, Beziehungen, Haushalte, Verknüpfungen, Aufgaben, Projekte, Termine, Gruppen, Sitzungen, Vereinswissen, Ordner, Einstellungen und Dokument-Metadaten.</small>
+</div>
+<button class="btn primary" id="exportBackupBtn" type="button">Backup exportieren</button>
+</div>
+<div class="backup-action">
+<div>
+<b>Backup importieren</b>
+<small>Ersetzt nach Sicherheitsabfrage den aktuellen Datenstand. Vor dem Import wird automatisch ein Sicherungsbackup erzeugt.</small>
+</div>
+<button class="btn secondary" id="importBackupBtn" type="button">Backup importieren</button>
+<input accept=".json,application/json" hidden="" id="backupImportInput" type="file"/>
+</div>
+<div class="backup-warning">
+<b>Hinweis zu Google-Drive-Dateien</b>
+<span>Das Backup enthält die vollständige V-Planer-Datenbank inklusive Ordnerstruktur und Dateiverweisen. Die eigentlichen hochgeladenen Word-/PDF-/Bilddateien bleiben in Google Drive gespeichert und werden nicht nochmals in die JSON-Datei eingebettet.</span>
+</div>
+</div></div></section><div class="settings-save"><button class="btn primary" id="saveSettingsBtn">Einstellungen speichern</button></div></div></div>
+</section>
+</div>
+</main>
+</div>
+<div aria-label="Mobile Hauptnavigation" class="mobile-nav">
+<button aria-label="Übersicht" data-view="dashboard">🏠<span>Start</span></button>
+<button aria-label="Aufgaben" data-view="tasks">✅<span>Aufgaben</span></button>
+<button aria-label="Projekte" data-view="projects">📁<span>Projekte</span></button>
+<button aria-label="Kalender" data-view="calendar">📅<span>Kalender</span></button>
+<button aria-label="Weitere Bereiche" id="mobileMoreBtn" type="button">☰<span>Mehr</span></button>
+</div>
+<div aria-hidden="true" class="mobile-menu-overlay" id="mobileMenuOverlay"></div>
+<aside aria-hidden="true" aria-label="Weitere Bereiche" class="mobile-menu" id="mobileMenu">
+<div class="mobile-menu-head">
+<div class="mobile-menu-brand"><img alt="" src="assets/v-planer-logo.png"/><div><b>V-Planer</b><small>Dein Verein. Einfach organisiert.</small></div></div>
+<button aria-label="Menü schließen" class="icon-btn" id="mobileMenuClose" type="button">×</button>
+</div>
+<div class="mobile-menu-scroll">
+<div class="mobile-menu-section">Planung</div>
+<button data-view="kanban">▦ Kanban</button>
+<button data-view="year">🗓 Vereinsjahr</button>
+<button data-view="archive">🗄️ Archiv</button>
+<div class="mobile-menu-section" data-module="club">Verein</div>
+<button data-module="club" data-view="members">👥 Mitglieder</button>
+<button data-module="club" data-view="groups">🌳 Gruppen &amp; Funktionen</button>
+<button data-module="club" data-view="meetings">📝 Sitzungen &amp; Beschlüsse</button>
+<div class="mobile-menu-section" data-module="finance">Finanzen</div>
+<button data-module="finance" data-view="finance-kasse">💶 KassenKumpel</button>
+<button data-module="finance" data-view="finance-fines">⚠️ Strafen</button>
+<div class="mobile-menu-section" data-module="documents">Dokumente</div>
+<button data-module="documents" data-view="documents">📄 Dokumente &amp; Bilder</button>
+<button data-module="documents" data-view="knowledge">📚 Vereinswissen</button>
+<div class="mobile-menu-section">System</div>
+<button data-view="trash">🗑️ Papierkorb <span class="mobile-trash-count" id="mobileTrashCount"></span></button>
+<button data-view="settings">⚙️ Einstellungen</button>
+</div>
+</aside>
+<dialog id="modal"><form class="modal" method="dialog"><div class="modal-head"><h2 id="modalTitle">Neu</h2><button class="icon-btn" value="cancel">×</button></div><div class="modal-body" id="modalBody"></div><div class="modal-actions"><button class="btn secondary" value="cancel">Abbrechen</button><button class="btn primary" id="modalSave" value="default">Speichern</button></div></form></dialog>
+<dialog id="detailModal"><form class="modal wide" method="dialog"><div class="modal-head"><h2 id="detailTitle">Details</h2><button class="icon-btn" value="cancel">×</button></div><div class="modal-body" id="detailBody"></div><div class="modal-actions"><button class="btn secondary" value="cancel">Schließen</button></div></form></dialog>
 <script src="app.js"></script>
 </body>
 </html>

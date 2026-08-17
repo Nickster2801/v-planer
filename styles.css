@@ -1306,3 +1306,117 @@ input,select,textarea{font-size:16px}
   #view-documents .area-file-table td:nth-child(4):before{content:"Datum"}
   #view-documents .area-file-table td:nth-child(5):before{content:"Aktion"}
 }
+
+/* =========================================================
+   V-Planer 1.8.0 – Aufgeräumte Übersicht, Funktionen & Einstellungen
+   ========================================================= */
+.metrics{grid-template-columns:repeat(3,minmax(0,1fr))}
+.metric-link{
+  appearance:none;width:100%;font:inherit;text-align:left;color:inherit;cursor:pointer;
+  transition:transform .12s ease,border-color .12s ease,box-shadow .12s ease
+}
+.metric-link:hover{transform:translateY(-1px);border-color:#b8d5ec;box-shadow:0 8px 20px rgba(18,53,86,.08)}
+.metric-link:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.metric-link em{display:block;margin-top:8px;font-size:10px;font-style:normal;font-weight:800;color:var(--blue)}
+
+.alert-strip{padding:8px;background:#fffaf3}
+.dashboard-alert-items{display:flex;flex-wrap:wrap;gap:6px}
+.dashboard-alert-item{display:inline-flex;align-items:center;gap:7px;min-height:30px;padding:5px 8px;border:1px solid #fed7aa;border-radius:9px;background:#fff;color:#9a3412;font-size:11px;font-weight:700}
+.dashboard-alert-item button{width:24px;height:24px;border:0;border-radius:7px;background:transparent;color:#9a3412;cursor:pointer;font-size:17px;line-height:1}
+.dashboard-alert-item button:hover{background:#ffedd5}
+
+.personal-event-row{display:flex;align-items:center;gap:5px;cursor:default;padding:4px 0}
+.personal-event-open{flex:1;min-width:0;display:flex;gap:10px;align-items:center;border:0;background:transparent;text-align:left;color:inherit;cursor:pointer;padding:6px 4px;border-radius:9px}
+.personal-event-open:hover{background:#f8fbff}
+.personal-event-open .personal-event-copy{display:block;flex:1;min-width:0}
+.personal-event-open .personal-event-copy span{display:block}
+.personal-event-dismiss{flex:none;width:30px;height:30px;border:0;border-radius:8px;background:transparent;color:#98a2b3;cursor:pointer;font-size:18px}
+.personal-event-dismiss:hover{background:#f2f4f7;color:#475467}
+
+.link-clip-btn{
+  position:relative;display:inline-flex;align-items:center;justify-content:center;gap:3px;vertical-align:middle;
+  min-width:30px;height:30px;padding:3px 7px;border:1px solid #dbe5ee;border-radius:8px;background:#fff;
+  color:#475467;cursor:pointer;font:inherit;font-size:14px
+}
+.link-clip-btn:hover{background:#f4f8fb;border-color:#b9cede;color:var(--blue)}
+.link-clip-btn:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.link-clip-btn>span{min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:#eaf2fb;color:#175cd3;display:inline-flex;align-items:center;justify-content:center;font-size:8px;font-weight:850}
+.link-clip-btn:disabled{opacity:.45;cursor:not-allowed}
+
+.function-overview-card{margin-top:13px}
+.function-overview-head>div{min-width:0}.function-overview-head small{display:block;margin-top:3px}
+.function-purpose-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:10px}
+.function-purpose-grid>div{display:grid;grid-template-columns:27px minmax(0,1fr);column-gap:8px;row-gap:2px;align-items:center;padding:10px;border:1px solid var(--line);border-radius:11px;background:#fbfdff}
+.function-purpose-grid>div>span{grid-row:1/3;width:27px;height:27px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(145deg,var(--blue-soft),var(--green-soft));color:var(--blue-dark);font-size:10px;font-weight:850}
+.function-purpose-grid b{font-size:10px}.function-purpose-grid small{font-size:9px;color:var(--muted);line-height:1.35}
+.function-help-box{border:1px solid #d9e8f3;border-radius:11px;background:#f7fbff;margin-bottom:10px}
+.function-help-box summary{cursor:pointer;padding:10px 12px;font-size:11px;font-weight:800;color:var(--blue-dark)}
+.function-help-box p{margin:0;padding:0 12px 12px;font-size:10px;line-height:1.55;color:#475467}
+.function-overview-toolbar{padding-left:0;padding-right:0}
+.function-overview-list{display:grid;gap:7px}
+.function-overview-row{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:10px;align-items:center;padding:11px;border:1px solid var(--line);border-radius:11px;background:#fff}
+.function-overview-row.former{opacity:.72}.function-overview-row.upcoming{background:#fbfdff}
+.function-overview-icon{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:#eef5fb;font-size:17px}
+.function-overview-copy{display:grid;gap:3px;min-width:0}.function-overview-copy small,.function-overview-copy span,.function-overview-copy em{font-size:9px;color:var(--muted);font-style:normal;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.function-overview-title{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.function-overview-title b{font-size:11px}
+.function-state{padding:3px 6px;border-radius:999px;font-size:8px!important;font-weight:800!important}.function-state.active{background:#e9f8eb;color:#237a30}.function-state.upcoming{background:#eaf2fb;color:#175cd3}.function-state.former{background:#f2f4f7;color:#667085}.function-state.vacant{background:#fff4e5;color:#9a6700}
+.function-overview-actions{display:flex;align-items:center;gap:5px;flex-wrap:wrap;justify-content:flex-end}
+
+/* Settings now behave like a small control center rather than one long page. */
+.settings-shell{display:grid;grid-template-columns:225px minmax(0,1fr);gap:13px;align-items:start}
+.settings-section-nav{position:sticky;top:90px;overflow:hidden}
+.settings-nav-head{display:grid;gap:2px;padding:14px 14px 10px;border-bottom:1px solid var(--line)}
+.settings-nav-head b{font-size:14px}.settings-nav-head small{font-size:10px;color:var(--muted)}
+.settings-section-nav nav{display:grid;padding:7px}
+.settings-section-nav button,.settings-mobile-menu nav button{border:0;background:transparent;color:#475467;text-align:left;cursor:pointer;border-radius:9px;font:inherit;font-size:11px;font-weight:750}
+.settings-section-nav button{display:flex;align-items:center;gap:8px;padding:10px}
+.settings-section-nav button:hover,.settings-section-nav button.active{background:#eef6fc;color:var(--blue-dark)}
+.settings-section-nav button.active{box-shadow:inset 3px 0 0 var(--blue)}
+.settings-section-content{min-width:0}
+.settings-section-panel{display:none}.settings-section-panel.active{display:block}
+.settings-panel-head{margin-bottom:10px;padding:3px 2px}.settings-panel-head h2{margin:0;font-size:18px;color:var(--blue-dark)}.settings-panel-head p{margin:4px 0 0;color:var(--muted);font-size:11px}
+.settings-panel-grid{align-items:start}
+.settings-mobile-menu{display:none;margin-bottom:10px;overflow:hidden}
+.settings-mobile-menu summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 13px;cursor:pointer}
+.settings-mobile-menu summary::-webkit-details-marker{display:none}.settings-mobile-menu summary span{font-size:10px;color:var(--muted)}.settings-mobile-menu summary b{font-size:11px;color:var(--blue-dark)}
+.settings-mobile-menu nav{display:grid;gap:3px;border-top:1px solid var(--line);padding:7px}.settings-mobile-menu nav button{padding:10px}.settings-mobile-menu nav button.active{background:#eef6fc;color:var(--blue-dark)}
+#view-settings .settings-save{margin-left:238px}
+#view-settings .settings-save.hidden{display:none}
+#view-settings [data-settings-panel="sync"] .setting-card{height:auto}
+#view-settings [data-settings-panel="sync"] .storage-caption{margin-bottom:4px}
+
+@media(max-width:1100px){
+  .settings-shell{grid-template-columns:195px minmax(0,1fr)}
+  #view-settings .settings-save{margin-left:208px}
+  .function-purpose-grid{grid-template-columns:1fr}
+}
+@media(max-width:900px){
+  .settings-shell{display:block}.settings-section-nav{display:none}.settings-mobile-menu{display:block}.settings-section-content{width:100%}
+  #view-settings .settings-save{margin-left:0}
+}
+@media(max-width:760px){
+  .metrics{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.metric-link{padding:11px 9px}.metric-link b{font-size:23px}.metric-link span{font-size:10px}.metric-link small{font-size:8px}.metric-link em{display:none}
+  .dashboard-alert-items{display:grid;grid-template-columns:1fr}.dashboard-alert-item{justify-content:space-between}
+  .personal-event-open{align-items:flex-start}.personal-event-type{margin-left:auto}
+  .function-overview-head{align-items:flex-start;gap:8px}.function-overview-head .btn{min-height:42px}
+  .function-overview-row{grid-template-columns:32px minmax(0,1fr)}.function-overview-actions{grid-column:1/-1;justify-content:flex-end}.function-overview-actions .btn{min-height:40px}
+  .settings-panel-grid{grid-template-columns:1fr!important}.settings-panel-head h2{font-size:16px}
+}
+@media(max-width:430px){
+  .metrics{grid-template-columns:1fr}.metric-link{display:grid;grid-template-columns:1fr auto;column-gap:10px;align-items:center}.metric-link b{grid-row:1/3;grid-column:2;font-size:27px;margin:0}.metric-link small{font-size:9px}
+}
+
+/* 1.8.0 settings save bar lives inside the settings content column. */
+#view-settings .settings-save{margin-left:0}
+.settings-nav-head{grid-template-columns:minmax(0,1fr) auto;align-items:center}
+.settings-nav-head>div{display:grid;gap:2px;min-width:0}
+#settingsNavCollapse{width:28px;height:28px;border:0;border-radius:8px;background:#f4f7fa;color:#667085;cursor:pointer;font-size:18px}
+#settingsNavCollapse:hover{background:#eaf2f8;color:var(--blue)}
+.settings-shell.nav-collapsed{grid-template-columns:58px minmax(0,1fr)}
+.settings-shell.nav-collapsed .settings-section-nav .settings-nav-head>div{display:none}
+.settings-shell.nav-collapsed .settings-section-nav .settings-nav-head{display:flex;justify-content:center;padding:9px 6px}
+.settings-shell.nav-collapsed #settingsNavCollapse{transform:rotate(180deg)}
+.settings-shell.nav-collapsed .settings-section-nav button{justify-content:center;font-size:15px;padding:10px 6px}
+.settings-shell.nav-collapsed .settings-section-nav button span{display:none}
+@media(max-width:900px){#settingsNavCollapse{display:none}}
+#view-settings .settings-sync-structured-card{padding:0;overflow:hidden}

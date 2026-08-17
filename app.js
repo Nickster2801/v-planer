@@ -27,7 +27,7 @@ const ageAt = (birth, onDate=new Date()) => { if(!birth) return null; const b=ne
 
 function defaultDB(){
   return {
-    version:7, updatedAt:now(), settingsUpdatedAt:now(),
+    version:8, updatedAt:now(), settingsUpdatedAt:now(),
     settings:{
       clubName:"Mein Verein", userRole:"Vorstand", uiScale:100, storageLimitGB:CFG.DEFAULT_STORAGE_LIMIT_GB||5, compressImages:true, honoraryContributionFree:false,
       clubData:{
@@ -990,7 +990,7 @@ function buildBackupPayload(){
   return {
     format:"V-Planer-Backup",
     backupVersion:1,
-    appVersion:"1.7.0",
+    appVersion:"1.8.0",
     exportedAt:now(),
     data:db
   };
@@ -1307,10 +1307,18 @@ function autoRuleMatches(m,g){
 }
 function directMembersOfGroup(groupId){ return activeRows("members").filter(m=>(m.groupIds||[]).includes(groupId)||autoRuleMatches(m,byId("groups",groupId)||{})); }
 function membersOfGroup(groupId,includeChildren=true){ const ids=[groupId,...(includeChildren?descendants(groupId):[])]; const set=new Map(); ids.forEach(id=>directMembersOfGroup(id).forEach(m=>set.set(m.id,m))); return [...set.values()]; }
-function activeFunctionsForGroup(groupId){ const today=todayStr(); return activeRows("functions").filter(f=>f.groupId===groupId&&(!f.endDate||f.endDate>=today)); }
-function formerFunctionsForGroup(groupId){ const today=todayStr(); return activeRows("functions").filter(f=>f.groupId===groupId&&f.endDate&&f.endDate<today); }
+function functionState(f){
+  const today=todayStr();
+  if(f?.startDate&&f.startDate>today)return "upcoming";
+  if(f?.endDate&&f.endDate<today)return "former";
+  return "active";
+}
+function functionStateLabel(f){return ({active:"Aktuell",upcoming:"Künftig",former:"Früher"})[functionState(f)]||"Aktuell"}
+function activeFunctionsForGroup(groupId){ return activeRows("functions").filter(f=>f.groupId===groupId&&functionState(f)==="active"); }
+function formerFunctionsForGroup(groupId){ return activeRows("functions").filter(f=>f.groupId===groupId&&functionState(f)==="former"); }
+function upcomingFunctionsForGroup(groupId){ return activeRows("functions").filter(f=>f.groupId===groupId&&functionState(f)==="upcoming"); }
 
-function pageMeta(view){return({dashboard:["Übersicht","Heute, diese Woche und alles Wichtige im Blick."],tasks:["Aufgaben","Offene Punkte, Zuständigkeiten und Fälligkeiten."],projects:["Projekte","Vorhaben wie in einer Projektzentrale planen und verfolgen."],kanban:["Kanban","Offen, In Arbeit, Warten und Erledigt."],calendar:["Kalender","Termine, Geburtstage und Vereinsereignisse."],year:["Vereinsjahr","Das Vereinsjahr auf einen Blick."],archive:["Archiv","Abgeschlossene Aufgaben und Projekte übersichtlich aufbewahren."],"finance-kasse":["KassenKumpel","Kassenbuch, Barkasse, Belege und Auswertungen."],"finance-fines":["Strafen","Strafen und Zahlungen der Vereinsmitglieder verwalten."],members:["Mitglieder","Stammdaten, Historie, Beziehungen, Ehrungen und Erinnerungen."],groups:["Gruppen","Gruppen, Untergruppen, Funktionen, Mannschaften und Statistiken."],meetings:["Sitzungen & Beschlüsse","Tagesordnungen, Protokolle und Entscheidungen."],documents:["Dokumente & Bilder","Dateien und Ordner zentral ablegen, strukturieren und mit Vereinswissen verknüpfen."],knowledge:["Vereinswissen","Abläufe, Ansprechpartner und Erfahrungswissen."],storage:["Speicher & Sync","Google Drive, Datenvolumen und Synchronisation."],trash:["Papierkorb","Gelöschte Inhalte wiederherstellen oder endgültig entfernen."],settings:["Einstellungen","Module, Warnungen und Grundkonfiguration."]})[view]||[view,""]}
+function pageMeta(view){return({dashboard:["Übersicht","Heute, diese Woche und alles Wichtige im Blick."],tasks:["Aufgaben","Offene Punkte, Zuständigkeiten und Fälligkeiten."],projects:["Projekte","Vorhaben wie in einer Projektzentrale planen und verfolgen."],kanban:["Kanban","Offen, In Arbeit, Warten und Erledigt."],calendar:["Kalender","Termine, Geburtstage und Vereinsereignisse."],year:["Vereinsjahr","Das Vereinsjahr auf einen Blick."],archive:["Archiv","Abgeschlossene Aufgaben und Projekte übersichtlich aufbewahren."],"finance-kasse":["KassenKumpel","Kassenbuch, Barkasse, Belege und Auswertungen."],"finance-fines":["Strafen","Strafen und Zahlungen der Vereinsmitglieder verwalten."],members:["Mitglieder","Stammdaten, Historie, Beziehungen, Ehrungen und Erinnerungen."],groups:["Gruppen & Funktionen","Gruppenstruktur, Ämter, Zuständigkeiten und Mannschaften verwalten."],meetings:["Sitzungen & Beschlüsse","Tagesordnungen, Protokolle und Entscheidungen."],documents:["Dokumente & Bilder","Dateien und Ordner zentral ablegen, strukturieren und mit Vereinswissen verknüpfen."],knowledge:["Vereinswissen","Abläufe, Ansprechpartner und Erfahrungswissen."],storage:["Speicher & Sync","Google Drive, Datenvolumen und Synchronisation."],trash:["Papierkorb","Gelöschte Inhalte wiederherstellen oder endgültig entfernen."],settings:["Einstellungen","Vereinsdaten, Darstellung, Erinnerungen, Kalender, Speicher und Backup."]})[view]||[view,""]}
 function applyModuleVisibility(){
   $$('[data-module="club"]').forEach(el=>el.classList.toggle("hidden",!db.settings.modules.club));
   $$('[data-module="documents"]').forEach(el=>el.classList.toggle("hidden",!db.settings.modules.documents));
@@ -1329,6 +1337,10 @@ function openMobileMenu(){
   document.body.classList.add("mobile-menu-open");
 }
 function go(view){
+  if(view==="storage"){
+    view="settings";
+    requestAnimationFrame(()=>setSettingsSection("sync"));
+  }
   if((view==="members"||view==="groups"||view==="meetings")&&!db.settings.modules.club)view="dashboard";
   if((view==="documents"||view==="knowledge")&&!db.settings.modules.documents)view="dashboard";
   if(view.startsWith("finance-")&&db.settings.modules.finance===false)view="dashboard";
@@ -1345,48 +1357,99 @@ $("#mobileMenuOverlay")?.addEventListener("click",closeMobileMenu);
 window.addEventListener("keydown",e=>{if(e.key==="Escape")closeMobileMenu();});
 $$('[data-go]').forEach(b=>b.addEventListener("click",()=>go(b.dataset.go)));
 
+const SETTINGS_SECTION_KEY="v-planer-settings-section-v1";
+const SETTINGS_SECTION_LABELS={club:"Vereinsdaten",organization:"Verein & Mitglieder",appearance:"Darstellung & Bereiche",reminders:"Erinnerungen",calendar:"Google Kalender",sync:"Speicher & Sync",backup:"Backup & Daten"};
+function activeSettingsSection(){
+  const key=localStorage.getItem(SETTINGS_SECTION_KEY)||"club";
+  return SETTINGS_SECTION_LABELS[key]?key:"club";
+}
+function setSettingsSection(key,store=true){
+  if(!SETTINGS_SECTION_LABELS[key])key="club";
+  if(store)localStorage.setItem(SETTINGS_SECTION_KEY,key);
+  $$('[data-settings-panel]').forEach(panel=>panel.classList.toggle("active",panel.dataset.settingsPanel===key));
+  $$('[data-settings-section]').forEach(btn=>{
+    const active=btn.dataset.settingsSection===key;
+    btn.classList.toggle("active",active);
+    btn.setAttribute("aria-current",active?"page":"false");
+  });
+  const mobileCurrent=$("#settingsMobileCurrent");if(mobileCurrent)mobileCurrent.textContent=SETTINGS_SECTION_LABELS[key];
+  const mobileMenu=$("#settingsMobileMenu");if(mobileMenu&&window.innerWidth<=900)mobileMenu.open=false;
+  const saveBar=$("#view-settings .settings-save");
+  if(saveBar)saveBar.classList.toggle("hidden",key==="backup"||key==="calendar");
+}
+$$('[data-settings-section]').forEach(btn=>btn.addEventListener("click",()=>setSettingsSection(btn.dataset.settingsSection)));
+const SETTINGS_NAV_COLLAPSED_KEY="v-planer-settings-nav-collapsed-v1";
+function applySettingsNavCollapsed(){
+  const shell=$("#view-settings .settings-shell"),collapsed=localStorage.getItem(SETTINGS_NAV_COLLAPSED_KEY)==="1";
+  shell?.classList.toggle("nav-collapsed",collapsed);
+  const btn=$("#settingsNavCollapse");if(btn){btn.title=collapsed?"Einstellungsmenü ausklappen":"Einstellungsmenü einklappen";btn.setAttribute("aria-label",btn.title)}
+}
+$("#settingsNavCollapse")?.addEventListener("click",()=>{const next=localStorage.getItem(SETTINGS_NAV_COLLAPSED_KEY)!=="1";localStorage.setItem(SETTINGS_NAV_COLLAPSED_KEY,next?"1":"0");applySettingsNavCollapsed()});
+document.addEventListener("click",e=>{
+  const jump=e.target.closest?.("[data-settings-jump]");
+  if(!jump)return;
+  go("settings");
+  setSettingsSection(jump.dataset.settingsJump||"club");
+});
+
+const DASHBOARD_DISMISS_KEY="v-planer-dashboard-dismissed-v1";
+function dashboardDismissMap(){
+  let map={};
+  try{map=JSON.parse(localStorage.getItem(DASHBOARD_DISMISS_KEY)||"{}")||{}}catch{}
+  const today=todayStr();let changed=false;
+  Object.entries(map).forEach(([key,until])=>{if(until&&until<today){delete map[key];changed=true}});
+  if(changed)localStorage.setItem(DASHBOARD_DISMISS_KEY,JSON.stringify(map));
+  return map;
+}
+function dashboardNoticeDismissed(key){return !!dashboardDismissMap()[key]}
+function dismissDashboardNotice(key,until=todayStr()){
+  const map=dashboardDismissMap();map[key]=until||todayStr();localStorage.setItem(DASHBOARD_DISMISS_KEY,JSON.stringify(map));renderDashboard();
+}
+function personalDashboardDismissKey(item){return `personal:${item._kind}:${item.id}:${item._date}`}
+function dashboardAlertHTML(items){
+  if(!items.length)return "";
+  return `<div class="dashboard-alert-items">${items.map(item=>`<div class="dashboard-alert-item"><span>${esc(item.icon||"⚠")} ${esc(item.text)}</span>${item.dismissKey?`<button type="button" data-dismiss-dashboard-alert="${esc(item.dismissKey)}" data-dismiss-until="${esc(item.until||todayStr())}" title="Hinweis für diesen Zeitraum ausblenden" aria-label="Hinweis ausblenden">×</button>`:""}</div>`).join("")}</div>`;
+}
+
 function renderDashboard(){
-  const tasks=activeRows("tasks"), projects=activeRows("projects"), members=activeRows("members");
-  const open=tasks.filter(t=>t.status!=="done"); const today=open.filter(t=>t.due===todayStr()).length; const week=open.filter(t=>{const d=daysUntil(t.due);return d!==null&&d>=0&&d<=7}).length;
-  $("#metricOpenTasks").textContent=open.length; $("#metricTaskHint").textContent=`Heute ${today} · Woche ${week}`;
-  $("#metricProjects").textContent=projects.filter(p=>p.status==="active").length; $("#metricProjectHint").textContent=`${projects.filter(p=>projectStartDate(p)&&p.status!=="closed").length} mit Zeitraum`;
-  $("#metricMembers").textContent=members.length; $("#metricMemberHint").textContent=`${members.filter(m=>m.status==="active").length} aktiv`;
-  const nextBirthday=activeRows("members")
-    .filter(m=>m.status!=="deceased"&&m.birthDate)
-    .map(m=>{
-      const info=nextRecurringInfo(m.birthDate);
-      if(!info)return null;
-      const age=info.year-Number(m.birthDate.slice(0,4));
-      return {...m,_days:info.days,_date:info.date,_age:age,_roundBirthday:isRoundBirthdayAge(age)};
-    })
-    .filter(Boolean)
-    .sort((a,b)=>a._days-b._days||memberFullName(a).localeCompare(memberFullName(b),"de"))[0]||null;
+  const tasks=activeRows("tasks"),projects=activeRows("projects"),members=activeRows("members");
+  const open=tasks.filter(t=>t.status!=="done");
+  const today=open.filter(t=>t.due===todayStr()).length;
+  const week=open.filter(t=>{const d=daysUntil(t.due);return d!==null&&d>=0&&d<=7}).length;
+  $("#metricOpenTasks").textContent=open.length;$("#metricTaskHint").textContent=`Heute ${today} · Woche ${week}`;
+  $("#metricProjects").textContent=projects.filter(p=>p.status==="active").length;$("#metricProjectHint").textContent=`${projects.filter(p=>projectStartDate(p)&&p.status!=="closed").length} mit Zeitraum`;
+  $("#metricMembers").textContent=members.length;$("#metricMemberHint").textContent=`${members.filter(m=>m.status==="active").length} aktiv`;
 
-  if(nextBirthday){
-    $("#metricBirthdays").textContent=nextBirthday._days===0?"Heute":nextBirthday._days===1?"Morgen":`in ${nextBirthday._days} Tagen`;
-    const hint=$("#metricBirthdayHint");
-    if(hint)hint.textContent=`${nextBirthday._roundBirthday?"Runder Geburtstag · ":""}${memberFullName(nextBirthday)} · ${fmtDate(nextBirthday._date)} · wird ${nextBirthday._age}`;
-  }else{
-    $("#metricBirthdays").textContent="—";
-    const hint=$("#metricBirthdayHint");
-    if(hint)hint.textContent="Noch kein Geburtstag hinterlegt";
-  }
-
-  const bdays=upcomingBirthdays(7);
-
-  const alertItems=[];
-  const overdue=open.filter(t=>daysUntil(t.due)<0).length; if(overdue)alertItems.push(`${overdue} überfällige Aufgabe${overdue===1?"":"n"}`);
+  const bdays=upcomingBirthdays(7).filter(item=>{
+    const info=nextRecurringInfo(item.birthDate);
+    if(!info)return true;
+    const age=info.year-Number(item.birthDate.slice(0,4));
+    if(!isRoundBirthdayAge(age))return true;
+    return !dashboardNoticeDismissed(personalDashboardDismissKey({...item,_kind:"birthday",_date:info.date,_age:age,_roundBirthday:true}));
+  }),alertItems=[];
+  const overdue=open.filter(t=>daysUntil(t.due)<0).length;
+  if(overdue)alertItems.push({icon:"⚠",text:`${overdue} überfällige Aufgabe${overdue===1?"":"n"}`});
   const alarms=projects.filter(p=>{
     const end=projectEndDate(p),days=daysUntil(end);
     return p.status!=="closed"&&days!==null&&days<=db.settings.reminders.alarmDays&&days>=0;
-  }).length; if(alarms)alertItems.push(`${alarms} Projekt${alarms===1?"":"e"} im Alarm-Zeitraum`);
-  if(db.settings.reminders.birthdayWeek&&bdays.length)alertItems.push(`${bdays.length} Geburtstag${bdays.length===1?"":"e"} in den nächsten 7 Tagen`);
-  const roundBirthdays=upcomingRoundBirthdays(30);
-  if(roundBirthdays.length)alertItems.push(`${roundBirthdays.length} runde${roundBirthdays.length===1?"r Geburtstag":" Geburtstage"} in den nächsten 30 Tagen`);
-  $("#alertStrip").classList.toggle("hidden",!alertItems.length); $("#alertStrip").textContent=alertItems.length?`⚠ ${alertItems.join(" · ")}`:"";
+  }).length;
+  if(alarms)alertItems.push({icon:"◆",text:`${alarms} Projekt${alarms===1?"":"e"} im Alarm-Zeitraum`});
+  if(db.settings.reminders.birthdayWeek&&bdays.length)alertItems.push({icon:"🎂",text:`${bdays.length} Geburtstag${bdays.length===1?"":"e"} in den nächsten 7 Tagen`});
+
+  const visibleRound=upcomingRoundBirthdays(30).filter(item=>!dashboardNoticeDismissed(personalDashboardDismissKey({...item,_kind:"birthday"})));
+  const roundSummaryKey=`summary:round:${todayStr()}`;
+  if(visibleRound.length&&!dashboardNoticeDismissed(roundSummaryKey))alertItems.push({icon:"🎉",text:`${visibleRound.length} runde${visibleRound.length===1?"r Geburtstag":" Geburtstage"} in den nächsten 30 Tagen`,dismissKey:roundSummaryKey,until:todayStr()});
+  const visibleJubilees=upcomingJubilees(30).filter(item=>!dashboardNoticeDismissed(personalDashboardDismissKey(item)));
+  const jubileeSummaryKey=`summary:jubilee:${todayStr()}`;
+  if(visibleJubilees.length&&!dashboardNoticeDismissed(jubileeSummaryKey))alertItems.push({icon:"★",text:`${visibleJubilees.length} Vereinsjubiläum${visibleJubilees.length===1?"":"en"} in den nächsten 30 Tagen`,dismissKey:jubileeSummaryKey,until:todayStr()});
+
+  const alertStrip=$("#alertStrip");
+  alertStrip.classList.toggle("hidden",!alertItems.length);
+  alertStrip.innerHTML=dashboardAlertHTML(alertItems);
+  $$('[data-dismiss-dashboard-alert]').forEach(btn=>btn.onclick=e=>{e.stopPropagation();dismissDashboardNotice(btn.dataset.dismissDashboardAlert,btn.dataset.dismissUntil)});
 
   const list=open.slice().sort((a,b)=>(a.due||"9999").localeCompare(b.due||"9999"));
-  $("#dashboardTasks").innerHTML=list.length?list.map(t=>`<div class="mini-row"><input type="checkbox" data-finish-task="${t.id}"><div><div class="mini-title">${esc(t.title)}</div><div class="mini-meta">${esc(projectName(t.projectId))} · ${esc(groupName(t.groupId))}</div></div><span class="badge ${reminderClass(t.due)}">${esc(dueText(t.due))}</span></div>`).join(""):`<div class="empty">Keine offenen Aufgaben.</div>`;
+  $("#dashboardTasks").innerHTML=list.length?list.map(t=>`<div class="mini-row"><input type="checkbox" data-finish-task="${t.id}" aria-label="Aufgabe erledigen"><div><div class="mini-title">${esc(t.title)}</div><div class="mini-meta">${esc(projectName(t.projectId))} · ${esc(groupName(t.groupId))}</div></div><span class="badge ${reminderClass(t.due)}">${esc(dueText(t.due))}</span></div>`).join(""):`<div class="empty">Keine offenen Aufgaben.</div>`;
   $$('[data-finish-task]').forEach(el=>el.onchange=()=>{const t=byId("tasks",el.dataset.finishTask);if(t){t.status="done";touch(t);saveLocal()}});
 
   const ps=projects.filter(p=>p.status!=="closed").sort((a,b)=>(projectStartDate(a)||"9999").localeCompare(projectStartDate(b)||"9999"));
@@ -1395,52 +1458,28 @@ function renderDashboard(){
     return `<div class="project-mini"><div class="row"><div><div class="mini-title">${esc(p.name)}</div><div class="mini-meta">${esc(groupName(p.groupId))} · ${esc(projectDateRangeText(p))} · ${st.done}/${st.total} Aufgaben erledigt</div></div><span class="project-days ${projectDayClass(end)}">${end?esc(dueText(end)):"ohne Zeitraum"}</span></div><div class="progress"><span style="width:${st.progress}%"></span></div><div class="mini-meta" style="text-align:right">${st.progress}%</div></div>`;
   }).join(""):`<div class="empty">Noch keine Projekte.</div>`;
 
-  const personalEvents=dashboardPersonalEvents(8);
+  const personalEvents=dashboardPersonalEvents(40)
+    .filter(item=>!(item._kind==="jubilee"||item._roundBirthday)||!dashboardNoticeDismissed(personalDashboardDismissKey(item)))
+    .slice(0,8);
   $("#dashboardBirthdays").innerHTML=personalEvents.length?personalEvents.map(item=>{
-    const isJubilee=item._kind==="jubilee";
-    const isRound=!isJubilee&&!!item._roundBirthday;
+    const isJubilee=item._kind==="jubilee",isRound=!isJubilee&&!!item._roundBirthday,special=isJubilee||isRound;
     const meta=isJubilee
       ?`${fmtDate(item._date)} · ${item._years}. Vereinsjubiläum · ${relativePersonalDateText(item._days)}`
       :`${fmtDate(item._date)} · ${isRound?"Runder Geburtstag":"Geburtstag"} · ${relativePersonalDateText(item._days)} · wird ${item._age}`;
-    return `<button type="button" class="birthday-row personal-event-row ${isRound?"round-birthday-row":""}" data-dashboard-member="${item.id}">
-      <div class="person-dot">${isJubilee?"★":isRound?"🎉":"🎂"}</div>
-      <div class="personal-event-copy">
-        <div class="mini-title">${esc(memberFullName(item))}</div>
-        <div class="mini-meta">${esc(meta)}</div>
-      </div>
-      <span class="personal-event-type ${isJubilee?"jubilee":isRound?"round-birthday":"birthday"}">${isJubilee?"Jubiläum":isRound?"Runder Geburtstag":"Geburtstag"}</span>
-    </button>`;
+    return `<div class="birthday-row personal-event-row ${isRound?"round-birthday-row":""}">
+      <button type="button" class="personal-event-open" data-dashboard-member="${item.id}">
+        <span class="person-dot">${isJubilee?"★":isRound?"🎉":"🎂"}</span>
+        <span class="personal-event-copy"><span class="mini-title">${esc(memberFullName(item))}</span><span class="mini-meta">${esc(meta)}</span></span>
+        <span class="personal-event-type ${isJubilee?"jubilee":isRound?"round-birthday":"birthday"}">${isJubilee?"Jubiläum":isRound?"Runder Geburtstag":"Geburtstag"}</span>
+      </button>
+      ${special?`<button type="button" class="personal-event-dismiss" data-dismiss-personal-event="${esc(personalDashboardDismissKey(item))}" data-dismiss-until="${esc(item._date)}" title="Nur aus der Übersicht ausblenden" aria-label="Hinweis aus der Übersicht ausblenden">×</button>`:""}
+    </div>`;
   }).join(""):`<div class="empty">Keine Geburtstage oder Jubiläen vorhanden.</div>`;
 
-  $$("[data-dashboard-member]").forEach(btn=>btn.onclick=()=>{
-    const member=byId("members",btn.dataset.dashboardMember);
-    if(!member)return;
-    selectedMemberId=member.id;
-    renderMembers();
-    go("members");
-  });
-  const birthdayMetric=$(".next-birthday-metric");
-  if(birthdayMetric){
-    birthdayMetric.classList.toggle("is-clickable",!!nextBirthday);
-    birthdayMetric.onclick=nextBirthday?()=>{
-      selectedMemberId=nextBirthday.id;
-      renderMembers();
-      go("members");
-    }:null;
-    birthdayMetric.setAttribute("role",nextBirthday?"button":"group");
-    birthdayMetric.tabIndex=nextBirthday?0:-1;
-    birthdayMetric.onkeydown=nextBirthday?(e=>{
-      if(e.key==="Enter"||e.key===" "){
-        e.preventDefault();
-        birthdayMetric.click();
-      }
-    }):null;
-  }
+  $$('[data-dashboard-member]').forEach(btn=>btn.onclick=()=>{const member=byId("members",btn.dataset.dashboardMember);if(!member)return;selectedMemberId=member.id;renderMembers();go("members")});
+  $$('[data-dismiss-personal-event]').forEach(btn=>btn.onclick=e=>{e.stopPropagation();dismissDashboardNotice(btn.dataset.dismissPersonalEvent,btn.dataset.dismissUntil)});
 
-  const ev=activeRows("events")
-    .filter(e=>eventEndDate(e)>=todayStr())
-    .sort((a,b)=>eventStartDate(a).localeCompare(eventStartDate(b)))
-    .slice(0,5);
+  const ev=activeRows("events").filter(e=>eventEndDate(e)>=todayStr()).sort((a,b)=>eventStartDate(a).localeCompare(eventStartDate(b))).slice(0,5);
   $("#dashboardEvents").innerHTML=ev.length?ev.map(e=>eventRowHTML(e)).join(""):`<div class="empty">Keine kommenden Termine.</div>`;
   bindEventOpeners($("#dashboardEvents"));
   renderDashboardStorage();
@@ -1715,6 +1754,11 @@ function setTaskSort(key,forceDir=null){
   }
   renderTasks();
 }
+function paperclipButtonHTML(type,id){
+  const count=relatedRecordCount(type,id);
+  return `<button class="link-clip-btn" type="button" data-manage-links="${type}" data-link-id="${id}" title="Verknüpfungen${count?` (${count})`:""}" aria-label="Verknüpfungen öffnen">📎${count?`<span>${count}</span>`:""}</button>`;
+}
+
 function renderTasks(){
   const q=($("#taskSearch").value||"").toLowerCase(),f=$("#taskStatusFilter").value;
   const filtered=activeRows("tasks").filter(t=>
@@ -1730,7 +1774,7 @@ function renderTasks(){
     <td><span class="badge ${reminderClass(t.due)}">${fmtDate(t.due)} · ${esc(dueText(t.due))}</span></td>
     <td>${priorityBadge(t.priority)}</td>
     <td><select data-task-status="${t.id}">${["open","doing","wait","done"].map(s=>`<option value="${s}" ${s===t.status?"selected":""}>${statusLabel(s)}</option>`).join("")}</select></td>
-    <td><button class="action-link" data-edit-task="${t.id}">Bearbeiten</button> <button class="action-link" data-manage-links="task" data-link-id="${t.id}">Verknüpfen</button> ${t.status==="done"?`<button class="action-link archive-link" data-archive-task="${t.id}">Archivieren</button>`:""} <button class="action-link" data-delete-task="${t.id}">Löschen</button></td>
+    <td><button class="action-link" data-edit-task="${t.id}">Bearbeiten</button> ${paperclipButtonHTML("task",t.id)} ${t.status==="done"?`<button class="action-link archive-link" data-archive-task="${t.id}">Archivieren</button>`:""} <button class="action-link" data-delete-task="${t.id}">Löschen</button></td>
   </tr>`).join(""):`<tr><td colspan="7" class="empty">Keine Aufgaben.</td></tr>`;
 
   updateTaskSortUI();
@@ -1827,7 +1871,7 @@ function renderProjects(){
 
       <div class="row project-card-actions">
         <span class="mini-meta">${st.open} offene Aufgabe${st.open===1?"":"n"}</span>
-        <span><button class="action-link" data-edit-project="${p.id}">Projekt bearbeiten</button> <button class="action-link" data-manage-links="project" data-link-id="${p.id}">Verknüpfen</button> ${p.status==="closed"?`<button class="action-link archive-link" data-archive-project="${p.id}">Archivieren</button>`:""} <button class="action-link danger-text" data-delete-project="${p.id}">Löschen</button></span>
+        <span><button class="action-link" data-edit-project="${p.id}">Projekt bearbeiten</button> ${paperclipButtonHTML("project",p.id)} ${p.status==="closed"?`<button class="action-link archive-link" data-archive-project="${p.id}">Archivieren</button>`:""} <button class="action-link danger-text" data-delete-project="${p.id}">Löschen</button></span>
       </div>
     </div>`;
   }).join(""):`<div class="empty">Keine Projekte.</div>`;
@@ -2410,7 +2454,7 @@ function renderFines(){
     <td>${fineStatusBadge(f.status,f.dueDate)}</td>
     <td class="fine-actions">
       <button class="action-link" data-edit-fine="${f.id}">Bearbeiten</button>
-      <button class="action-link" data-manage-links="fine" data-link-id="${f.id}">Verknüpfen</button>
+      ${paperclipButtonHTML("fine",f.id)}
       ${f.status!=="paid"?`<button class="action-link" data-pay-fine="${f.id}">Bezahlt</button>`:""}
       ${f.status!=="waived"?`<button class="action-link" data-waive-fine="${f.id}">Erlassen</button>`:""}
       ${f.status!=="open"?`<button class="action-link" data-reopen-fine="${f.id}">Wieder öffnen</button>`:""}
@@ -2792,23 +2836,53 @@ $("#fineCatalogBtn")?.addEventListener("click",openFineCatalogModal);
 
 function renderGroups(){
   const roots=activeRows("groups").filter(g=>!g.parentId); $("#groupTree").innerHTML=roots.length?roots.map(g=>groupNodeHTML(g,0)).join(""):`<div class="empty">Noch keine Gruppen.</div>`;
-  $$('[data-group-node]').forEach(el=>el.onclick=()=>{selectedGroupId=el.dataset.groupNode;renderGroups()}); if(!selectedGroupId&&roots[0])selectedGroupId=roots[0].id; renderGroupDetail();
+  $$('[data-group-node]').forEach(el=>el.onclick=()=>{selectedGroupId=el.dataset.groupNode;renderGroups()});
+  if(!selectedGroupId&&roots[0])selectedGroupId=roots[0].id;
+  renderGroupDetail();
+  renderFunctionOverview();
 }
 function groupNodeHTML(g,level){ const children=activeRows("groups").filter(x=>x.parentId===g.id); return `<div class="node level-${Math.min(level,3)} ${g.id===selectedGroupId?"active":""}" data-group-node="${g.id}">${level?"↳ ":""}${esc(g.name)} <span class="mini-meta">· ${esc(g.type||"Gruppe")}</span></div>${children.map(c=>groupNodeHTML(c,level+1)).join("")}`; }
 function renderGroupDetail(){
-  const g=byId("groups",selectedGroupId); $("#editGroupBtn").disabled=!g; $("#deleteGroupBtn").disabled=!g; if($("#linkGroupBtn"))$("#linkGroupBtn").disabled=!g; if(!g){$("#groupDetail").innerHTML='<div class="empty">Gruppe auswählen.</div>';$("#groupDetailTitle").textContent="Gruppendetails";return}
-  $("#groupDetailTitle").textContent=g.name; const direct=directMembersOfGroup(g.id),all=membersOfGroup(g.id,true),activeFns=activeFunctionsForGroup(g.id),formerFns=formerFunctionsForGroup(g.id),children=activeRows("groups").filter(x=>x.parentId===g.id);
+  const g=byId("groups",selectedGroupId); $("#editGroupBtn").disabled=!g; $("#deleteGroupBtn").disabled=!g; if($("#linkGroupBtn"))$("#linkGroupBtn").disabled=!g; if(!g){const clip=$("#linkGroupBtn");if(clip){clip.innerHTML="📎";clip.title="Verknüpfungen"}$("#groupDetail").innerHTML='<div class="empty">Gruppe auswählen.</div>';$("#groupDetailTitle").textContent="Gruppendetails";return}
+  $("#groupDetailTitle").textContent=g.name; const direct=directMembersOfGroup(g.id),all=membersOfGroup(g.id,true),activeFns=activeFunctionsForGroup(g.id),upcomingFns=upcomingFunctionsForGroup(g.id),formerFns=formerFunctionsForGroup(g.id),children=activeRows("groups").filter(x=>x.parentId===g.id);
+  const groupLinkBtn=$("#linkGroupBtn");if(groupLinkBtn){const linkCount=relatedRecordCount("group",g.id);groupLinkBtn.innerHTML=`📎${linkCount?`<span>${linkCount}</span>`:""}`;groupLinkBtn.title=`Verknüpfungen${linkCount?` (${linkCount})`:""}`;}
   const rule=g.autoRule?.enabled?`Automatisch: ${g.autoRule.status?`Status ${statusLabel(g.autoRule.status)}`:"alle Status"}${g.autoRule.ageMin!==""&&g.autoRule.ageMin!=null?`, ab ${g.autoRule.ageMin} J.`:""}${g.autoRule.ageMax!==""&&g.autoRule.ageMax!=null?`, bis ${g.autoRule.ageMax} J.`:""}`:"Keine automatische Regel";
   $("#groupDetail").innerHTML=`<p>${esc(g.description||"Keine Beschreibung hinterlegt.")}</p><div class="group-stat-grid"><div class="group-stat"><small>Direkte Mitglieder</small><b>${direct.length}</b></div><div class="group-stat"><small>inkl. Untergruppen</small><b>${all.length}</b></div><div class="group-stat"><small>Untergruppen</small><b>${children.length}</b></div><div class="group-stat"><small>Aktive Funktionen</small><b>${activeFns.length}</b></div></div>
   <div class="auto-rule"><b>Automatische Gruppenzuordnung</b><br>${esc(rule)}</div>
   <div class="group-section"><h3>Ansprechpartner</h3><div>${g.contactMemberId?esc(memberFullName(byId("members",g.contactMemberId)||{})):"Nicht hinterlegt"}</div></div>
   <div class="group-section"><h3>Aktuelle Funktionen</h3>${activeFns.length?activeFns.map(functionRowHTML).join(""):'<div class="mini-meta">Keine aktuellen Funktionen.</div>'}</div>
+  <div class="group-section"><h3>Künftige Funktionen</h3>${upcomingFns.length?upcomingFns.map(functionRowHTML).join(""):'<div class="mini-meta">Keine künftigen Funktionen.</div>'}</div>
   <div class="group-section"><h3>Frühere Funktionen</h3>${formerFns.length?formerFns.map(functionRowHTML).join(""):'<div class="mini-meta">Keine früheren Funktionen.</div>'}</div>
   <div class="group-section"><h3>Mannschaft / Mitgliederliste</h3><div class="team-list">${all.length?all.map(m=>`<span class="person-pill">${esc(`${m.firstName||""} ${m.lastName||""}`.trim())}</span>`).join(""):'<span class="mini-meta">Keine Mitglieder zugeordnet.</span>'}</div></div>`;
   $$('[data-edit-function]').forEach(el=>el.onclick=()=>openFunctionModal(byId("functions",el.dataset.editFunction)));
   $$('[data-delete-function]').forEach(el=>el.onclick=()=>{if(confirm("Funktion löschen?")){markDeleted("functions",el.dataset.deleteFunction);saveLocal()}});
 }
-function functionRowHTML(f){ const m=byId("members",f.memberId); return `<div class="function-row"><div><b>${esc(f.title)}</b><div class="mini-meta">${esc(f.kind||"Funktion")}</div></div><div>${esc(m?memberFullName(m):"Nicht besetzt")}</div><div>${fmtDate(f.startDate)} – ${f.endDate?fmtDate(f.endDate):"offen"}</div><div><button class="action-link" data-edit-function="${f.id}">Bearbeiten</button> <button class="action-link" data-manage-links="function" data-link-id="${f.id}">Verknüpfen</button> <button class="action-link" data-delete-function="${f.id}">Löschen</button></div></div>`; }
+function renderFunctionOverview(){
+  const host=$("#functionOverviewList");if(!host)return;
+  const q=($("#functionSearch")?.value||"").trim().toLowerCase(),filter=$("#functionStatusFilter")?.value||"";
+  const order={active:0,upcoming:1,former:2};
+  const rows=activeRows("functions").filter(f=>{
+    const member=byId("members",f.memberId),state=functionState(f);
+    const matches=!q||`${f.title||""} ${f.kind||""} ${member?memberFullName(member):"unbesetzt"} ${groupName(f.groupId)} ${f.notes||""}`.toLowerCase().includes(q);
+    const statusMatch=!filter||(filter==="vacant"?!f.memberId:state===filter);
+    return matches&&statusMatch;
+  }).sort((a,b)=>(order[functionState(a)]-order[functionState(b)])||String(a.title||"").localeCompare(String(b.title||""),"de"));
+  host.innerHTML=rows.length?rows.map(f=>{
+    const member=byId("members",f.memberId),state=functionState(f),count=relatedRecordCount("function",f.id);
+    return `<div class="function-overview-row ${state}">
+      <div class="function-overview-icon">${f.kind==="Trainer"?"🏃":f.kind==="Vorstandsfunktion"?"🏛️":"🎖️"}</div>
+      <div class="function-overview-copy"><div class="function-overview-title"><b>${esc(f.title)}</b><span class="function-state ${state}">${esc(functionStateLabel(f))}</span>${!f.memberId?'<span class="function-state vacant">Unbesetzt</span>':""}</div><small>${esc(f.kind||"Funktion")} · ${esc(groupName(f.groupId))}</small><span>${esc(member?memberFullName(member):"Noch keine Person zugeordnet")} · ${f.startDate?fmtDate(f.startDate):"Beginn offen"} – ${f.endDate?fmtDate(f.endDate):"offen"}</span>${f.notes?`<em>${esc(f.notes)}</em>`:""}</div>
+      <div class="function-overview-actions"><button class="btn tiny secondary" type="button" data-overview-edit-function="${f.id}">Bearbeiten</button>${paperclipButtonHTML("function",f.id)}<button class="btn tiny danger" type="button" data-overview-delete-function="${f.id}">Löschen</button></div>
+    </div>`;
+  }).join(""):`<div class="empty">Keine passenden Funktionen vorhanden.</div>`;
+  $$('[data-overview-edit-function]').forEach(btn=>btn.onclick=()=>{const f=byId("functions",btn.dataset.overviewEditFunction);if(f)openFunctionModal(f)});
+  $$('[data-overview-delete-function]').forEach(btn=>btn.onclick=()=>{const f=byId("functions",btn.dataset.overviewDeleteFunction);if(f&&confirm(`Funktion „${f.title}“ in den Papierkorb verschieben?`)){markDeleted("functions",f.id);saveLocal()}});
+}
+$("#functionSearch")?.addEventListener("input",renderFunctionOverview);
+$("#functionStatusFilter")?.addEventListener("change",renderFunctionOverview);
+$("#newFunctionOverviewBtn")?.addEventListener("click",()=>openFunctionModal(null,selectedGroupId||""));
+
+function functionRowHTML(f){ const m=byId("members",f.memberId); return `<div class="function-row"><div><b>${esc(f.title)}</b><div class="mini-meta">${esc(f.kind||"Funktion")}</div></div><div>${esc(m?memberFullName(m):"Nicht besetzt")}</div><div>${fmtDate(f.startDate)} – ${f.endDate?fmtDate(f.endDate):"offen"}</div><div><button class="action-link" data-edit-function="${f.id}">Bearbeiten</button> ${paperclipButtonHTML("function",f.id)} <button class="action-link" data-delete-function="${f.id}">Löschen</button></div></div>`; }
 $("#editGroupBtn").onclick=()=>{const g=byId("groups",selectedGroupId);if(g)openGroupModal(g)};
 $("#deleteGroupBtn").onclick=()=>deleteSelectedGroup();
 $("#newFunctionBtn").onclick=()=>openFunctionModal(null,selectedGroupId);
@@ -3015,7 +3089,7 @@ function fileTableRows(area,categoryMode=false,rowsOverride=null){
       <td class="doc-actions">
         ${d.webViewLink?`<a class="action-link" href="${esc(d.webViewLink)}" target="_blank" rel="noopener">Öffnen</a>`:""}
         <button class="action-link" type="button" data-export-file="${d.id}">Exportieren</button>
-        <button class="action-link" type="button" data-manage-links="document" data-link-id="${d.id}">Verknüpfen</button>
+        ${paperclipButtonHTML("document",d.id)}
         <button class="action-link" type="button" data-move-file="${d.id}">Verschieben</button>
         <button class="action-link danger-text" type="button" data-delete-file="${d.id}">Löschen</button>
       </td>
@@ -3033,7 +3107,7 @@ function renderMeetings(){
   const rows=activeRows("meetings").filter(m=>(m.folderId||"")===folderId).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
   const files=directAreaFiles("meetings");
   $("#meetingFolderCount").textContent=`${rows.length} Sitzung${rows.length===1?"":"en"} · ${files.length} Datei${files.length===1?"":"en"}`;
-  $("#meetingGrid").innerHTML=rows.length?rows.map(m=>`<div class="card meeting-card"><div class="row"><h3>${esc(m.title)}</h3><span class="badge low">${fmtDate(m.date)}</span></div><div class="mini-meta">${esc(groupName(m.groupId))}</div><p>${esc(m.notes||"Keine Notizen.")}</p><div class="mini-meta">${(m.decisions||[]).length} Beschlüsse</div><div style="margin-top:8px"><button class="action-link" data-edit-meeting="${m.id}">Bearbeiten</button> <button class="action-link" data-manage-links="meeting" data-link-id="${m.id}">Verknüpfen</button> <button class="action-link danger-text" data-delete-meeting="${m.id}">Löschen</button></div></div>`).join(""):`<div class="empty browser-empty">In diesem Ordner sind noch keine Sitzungen oder Beschlüsse abgelegt.</div>`;
+  $("#meetingGrid").innerHTML=rows.length?rows.map(m=>`<div class="card meeting-card"><div class="row"><h3>${esc(m.title)}</h3><span class="badge low">${fmtDate(m.date)}</span></div><div class="mini-meta">${esc(groupName(m.groupId))}</div><p>${esc(m.notes||"Keine Notizen.")}</p><div class="mini-meta">${(m.decisions||[]).length} Beschlüsse</div><div style="margin-top:8px"><button class="action-link" data-edit-meeting="${m.id}">Bearbeiten</button> ${paperclipButtonHTML("meeting",m.id)} <button class="action-link danger-text" data-delete-meeting="${m.id}">Löschen</button></div></div>`).join(""):`<div class="empty browser-empty">In diesem Ordner sind noch keine Sitzungen oder Beschlüsse abgelegt.</div>`;
   $("#meetingFileTable").innerHTML=fileTableRows("meetings",false);
   $$('[data-edit-meeting]').forEach(el=>el.onclick=()=>openMeetingModal(byId("meetings",el.dataset.editMeeting)));
   $$('[data-delete-meeting]').forEach(el=>el.onclick=()=>{if(confirm("Sitzung wirklich löschen?")){markDeleted("meetings",el.dataset.deleteMeeting);saveLocal()}});
@@ -3071,7 +3145,7 @@ function renderKnowledge(){
       ${knowledgeLinkedDocumentsHTML(k)}
       <div class="knowledge-card-actions">
         <button class="action-link" data-edit-knowledge="${k.id}">Bearbeiten</button>
-        <button class="action-link" data-manage-links="knowledge" data-link-id="${k.id}">Verknüpfen</button>
+        ${paperclipButtonHTML("knowledge",k.id)}
         <button class="action-link danger-text" data-delete-knowledge="${k.id}">Löschen</button>
       </div>
     </div>`;
@@ -3536,7 +3610,7 @@ let clubLogoDraft=undefined;
 function activeClubFunctions(){
   const today=todayStr();
   return activeRows("functions")
-    .filter(f=>!f.endDate||f.endDate>=today)
+    .filter(f=>functionState(f)==="active")
     .slice()
     .sort((a,b)=>String(a.title||"").localeCompare(String(b.title||""),"de",{sensitivity:"base"}));
 }
@@ -3647,6 +3721,8 @@ function renderSettings(){
   $("#honoraryContributionFree").checked=!!s.honoraryContributionFree;
   renderGroupTypeSettings();
   renderCalendarSyncSettings();
+  setSettingsSection(activeSettingsSection(),false);
+  applySettingsNavCollapsed();
 }
 ["infoDays","warningDays","alarmDays"].forEach(id=>$("#"+id).addEventListener("input",()=>$("#"+id+"Label").textContent=$("#"+id).value));
 $("#uiScale").addEventListener("input",()=>{
@@ -4062,7 +4138,7 @@ function showEventDetails(e){
     </div>
     <div class="event-detail-color"><span style="background:${color}"></span><b>Terminfarbe</b><code>${esc(color.toUpperCase())}</code></div>
     <div class="event-detail-actions">
-      <button class="btn secondary" type="button" data-manage-links="event" data-link-id="${e.id}">Verknüpfte Inhalte</button>
+      ${paperclipButtonHTML("event",e.id)}
       <button class="btn primary" type="button" id="detailEditEvent">Bearbeiten</button>
       <button class="btn danger" type="button" id="detailDeleteEvent">Termin löschen</button>
     </div>
@@ -4351,7 +4427,26 @@ function openGroupModal(rec=null){
     return true;
   });
 }
-function openFunctionModal(rec=null,groupId=""){ const r=rec||{title:"",kind:"Vorstandsfunktion",groupId:groupId||"",memberId:"",startDate:"",endDate:"",notes:""}; showModal(rec?"Funktion bearbeiten":"Neue Funktion",`<div class="form-grid"><label class="full">Funktion / Rolle<input id="fnTitle" value="${esc(r.title)}" placeholder="z. B. Vorsitzender, Trainer, Betreuer"></label><label>Art<select id="fnKind">${["Vorstandsfunktion","Trainer","Betreuer","Ansprechpartner","Sonstige Funktion"].map(x=>`<option ${r.kind===x?"selected":""}>${x}</option>`).join("")}</select></label><label>Gruppe<select id="fnGroup">${groupOptions(r.groupId)}</select></label><label>Person<select id="fnMember">${memberOptions(r.memberId)}</select></label><label>Beginn<input id="fnStart" type="date" value="${esc(r.startDate||"")}"></label><label>Ende<input id="fnEnd" type="date" value="${esc(r.endDate||"")}"></label><label class="full">Notizen<textarea id="fnNotes" rows="3">${esc(r.notes||"")}</textarea></label></div>`,()=>{const title=$("#fnTitle").value.trim();if(!title)return false;const target=rec||{id:uid(),createdAt:now()};Object.assign(target,{title,kind:$("#fnKind").value,groupId:$("#fnGroup").value,memberId:$("#fnMember").value,startDate:$("#fnStart").value,endDate:$("#fnEnd").value,notes:$("#fnNotes").value});touch(target);if(!rec)db.functions.push(target);saveLocal();return true}); }
+function openFunctionModal(rec=null,groupId=""){
+  const r=rec||{title:"",kind:"Vorstandsfunktion",groupId:groupId||"",memberId:"",startDate:"",endDate:"",notes:""};
+  showModal(rec?"Funktion / Amt bearbeiten":"Neue Funktion / neues Amt",`<div class="form-grid">
+    <div class="form-note full"><b>Was ist eine Funktion?</b><br>Eine Funktion beschreibt ein Amt oder eine Zuständigkeit im Verein – z. B. Vorsitz, Kasse, Trainer oder Ansprechpartner. Sie ist <b>keine Benutzerberechtigung</b>. Durch die Verknüpfung mit einem Mitglied bleibt die Person nur einmal gepflegt; Beginn und Ende bilden Wechsel und Historie ab.</div>
+    <label class="full">Bezeichnung des Amts / der Funktion<input id="fnTitle" value="${esc(r.title)}" placeholder="z. B. 1. Vorsitzender, Kassenwart, Trainer"></label>
+    <label>Art<select id="fnKind">${["Vorstandsfunktion","Trainer","Betreuer","Ansprechpartner","Sonstige Funktion"].map(x=>`<option ${r.kind===x?"selected":""}>${x}</option>`).join("")}</select></label>
+    <label>Gruppe<select id="fnGroup">${groupOptions(r.groupId)}</select></label>
+    <label class="full">Mitglied / Person<select id="fnMember">${memberOptions(r.memberId)}</select><small class="field-help">Kann leer bleiben, wenn ein Amt aktuell unbesetzt ist.</small></label>
+    <label>Beginn<input id="fnStart" type="date" value="${esc(r.startDate||"")}"></label>
+    <label>Ende<input id="fnEnd" type="date" value="${esc(r.endDate||"")}"><small class="field-help">Leer = derzeit ohne festgelegtes Ende.</small></label>
+    <label class="full">Notizen<textarea id="fnNotes" rows="3" placeholder="z. B. Wahlperiode, Zuständigkeiten oder Besonderheiten">${esc(r.notes||"")}</textarea></label>
+  </div>`,()=>{
+    const title=$("#fnTitle").value.trim(),startDate=$("#fnStart").value,endDate=$("#fnEnd").value;
+    if(!title)return false;
+    if(startDate&&endDate&&endDate<startDate){alert("Das Ende der Funktion darf nicht vor dem Beginn liegen.");return false}
+    const target=rec||{id:uid(),createdAt:now()};
+    Object.assign(target,{title,kind:$("#fnKind").value,groupId:$("#fnGroup").value,memberId:$("#fnMember").value,startDate,endDate,notes:$("#fnNotes").value.trim()});
+    touch(target);if(!rec)db.functions.push(target);saveLocal();return true;
+  });
+}
 function openMeetingModal(rec=null){
   const r=rec||{title:"",date:"",groupId:"",folderId:currentFolderId("meetings"),notes:"",decisions:[]};
   showModal(rec?"Sitzung bearbeiten":"Neue Sitzung",`<div class="form-grid">
@@ -4911,7 +5006,7 @@ function openLinkManager(type,id){
   const dlg=$("#detailModal");
   const render=()=>{
     const related=relatedRecordItems(type,id);
-    $("#detailTitle").textContent="Verknüpfte Inhalte";
+    $("#detailTitle").textContent="Verknüpfungen";
     $("#detailBody").innerHTML=`<div class="record-links-panel">
       <div class="record-link-source">
         <b>${esc(LINK_TYPE_META[type].icon)} ${esc(linkRecordTitle(type,source))}</b>
@@ -4927,7 +5022,7 @@ function openLinkManager(type,id){
         <button class="btn primary" id="recordLinkAddBtn" type="button">Verknüpfen</button>
       </div>
       <div>
-        <h3 style="font-size:13px;margin:0 0 7px">Verknüpfte Inhalte</h3>
+        <h3 style="font-size:13px;margin:0 0 7px">Bestehende Verknüpfungen</h3>
         <div class="record-link-list">
           ${related.length?related.map(item=>`<div class="record-link-row">
             <span class="record-link-row-icon">${LINK_TYPE_META[item.type]?.icon||"↗"}</span>
@@ -5518,7 +5613,7 @@ function renderMemberDetail(){
     <button class="btn tiny secondary" data-edit-member="${m.id}">Bearbeiten</button>
     <button class="btn tiny secondary" data-member-card="${m.id}">Mitgliedskarte</button>
     <button class="btn tiny secondary" data-manage-member-relations="${m.id}">Beziehungen (${relations.length})</button>
-    <button class="btn tiny secondary" data-manage-links="member" data-link-id="${m.id}">Verknüpfungen (${relatedRecordCount("member",m.id)})</button>
+    ${paperclipButtonHTML("member",m.id)}
     <button class="btn tiny danger" data-delete-member="${m.id}">Löschen</button>
   </div>
   <div class="member-relation-section">
@@ -5857,10 +5952,15 @@ $("#memberExportBtn")?.addEventListener("click",openMemberExport);
 
 /* Enhance link buttons with relationship counts after every render. */
 function decorateLinkButtons(){
-  $$("[data-manage-links]").forEach(btn=>{
+  $$('[data-manage-links]').forEach(btn=>{
     const type=btn.dataset.manageLinks,id=btn.dataset.linkId,count=type&&id?relatedRecordCount(type,id):0;
-    if(count&&/Verknüpf/.test(btn.textContent)&&!/\(\d+\)/.test(btn.textContent))btn.textContent=`${btn.textContent.replace(/\s*\(\d+\)$/,"")} (${count})`;
+    btn.classList.add("link-clip-btn");
+    btn.title=`Verknüpfungen${count?` (${count})`:""}`;
+    btn.setAttribute("aria-label",btn.title);
+    btn.innerHTML=`📎${count?`<span>${count}</span>`:""}`;
   });
+  const groupBtn=$("#linkGroupBtn");
+  if(groupBtn&&selectedGroupId){const count=relatedRecordCount("group",selectedGroupId);groupBtn.innerHTML=`📎${count?`<span>${count}</span>`:""}`;groupBtn.title=`Verknüpfungen${count?` (${count})`:""}`;}
 }
 
 applyUiScale();

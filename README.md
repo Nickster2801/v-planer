@@ -1,6 +1,6 @@
-# V-Planer 1.7.0 — Suche, Verknüpfungen, Papierkorb, Mitglieder-Datenaustausch & Mobile Agenda
+# V-Planer 1.8.0 — Übersicht, Funktionen, Einstellungen & Bedienbarkeit
 
-V-Planer 1.7.0 ist als responsive PWA für Desktop, Tablet und Smartphone ausgelegt.
+V-Planer 1.8.0 ist als responsive PWA für Desktop, Tablet und Smartphone ausgelegt.
 
 ## Schwerpunkte
 - Aufgaben, Projekte, Kanban, Kalender und Vereinsjahr
@@ -761,3 +761,65 @@ Der 42-Zellen-Monatskalender für Desktop/Tablet bleibt vollständig erhalten.
 
 ## Technischer Hinweis zu Google APIs
 Die Änderungen wurden statisch und syntaktisch geprüft. Live-Zugriffe gegen das konkrete Google-Drive- bzw. Google-Kalender-Konto sind Bestandteil des späteren Praxistests im realen Deployment und werden hier nicht als erfolgreich getestet behauptet.
+
+## V-Planer 1.8.0 – Übersicht & Bedienbarkeit
+
+### Übersicht
+- Die Kennzahlen **Offene Aufgaben**, **Aktive Projekte** und **Mitglieder** sind jetzt direkt anklickbar und führen in den jeweiligen Bereich.
+- Die bisherige Kennzahl **Nächster Geburtstag** wurde entfernt. Geburtstage und Jubiläen bleiben in der ausführlicheren Karte darunter sichtbar.
+- Hinweise zu **runden Geburtstagen** und **Vereinsjubiläen** können über `×` aus der Übersicht ausgeblendet werden. Das Ausblenden betrifft nur die Übersicht und verändert keine Mitgliedsdaten, Geburtstage oder Jubiläen.
+- Auch die kompakten Sonderhinweise im oberen Hinweisbereich lassen sich für den jeweiligen Zeitraum schließen.
+
+### Verknüpfungen aufgeräumt
+Das allgemeine Verknüpfungssystem bleibt technisch erhalten, damit bereits angelegte Beziehungen nicht verloren gehen. Die vielen ausgeschriebenen **„Verknüpfen“**-Schaltflächen wurden jedoch aus der Oberfläche entfernt.
+
+Stattdessen gibt es an den betreffenden Stellen nur noch eine kompakte **Büroklammer `📎`**. Eine kleine Zahl an der Büroklammer zeigt vorhandene Verknüpfungen. Erst beim Anklicken öffnet sich der Verknüpfungsdialog.
+
+Die etablierten Fachverknüpfungen bleiben unverändert, insbesondere:
+- Projekt ↔ Termin
+- Projekt ↔ Aufgaben
+- Vereinswissen ↔ Dokumente
+
+### Funktionen & Ämter überarbeitet
+Der Bereich **Gruppen** heißt jetzt **Gruppen & Funktionen**. Funktionen sind keine Benutzerrechte, sondern Ämter bzw. Zuständigkeiten, z. B. Vorsitz, Kassenwart, Trainer, Betreuer oder Ansprechpartner.
+
+Neu ist eine eigene Übersicht **Funktionen & Ämter** mit:
+- verständlicher Erklärung des Einsatzzwecks
+- Suche nach Funktion oder Person
+- Filter Aktuell / Künftig / Früher / Unbesetzt
+- direktem Bearbeiten und Löschen jeder Funktion
+- klarer Kennzeichnung des Zeitraums und der zugeordneten Person
+- Plausibilitätsprüfung für Beginn und Ende
+
+Künftige Funktionen werden nicht mehr versehentlich als aktuell gezählt. Die Vereinsdaten können weiterhin aktuelle Funktionen für Vorsitz, Schriftführung und Kasse referenzieren.
+
+### Speicher & Sync in Einstellungen
+Der eigenständige Navigationspunkt **Speicher & Sync** wurde entfernt. Speicherübersicht, Google-Drive-Verbindung, Synchronisierung, Speicherlimit und Bildkomprimierung befinden sich jetzt gemeinsam unter:
+
+**Einstellungen → Speicher & Sync**
+
+Der Sync-Status und die manuelle Synchronisierung in der oberen Leiste bleiben für den schnellen Zugriff erhalten.
+
+### Einstellungen neu gegliedert
+Die Einstellungen sind nicht mehr eine einzige lange Seite. Auf Desktop/Tablet gibt es links ein eigenes Untermenü mit:
+- Vereinsdaten
+- Verein & Mitglieder
+- Darstellung & Bereiche
+- Erinnerungen
+- Google Kalender
+- Speicher & Sync
+- Backup & Daten
+
+Das linke Menü kann eingeklappt werden. Auf Smartphones wird daraus ein platzsparendes aufklappbares Auswahlmenü.
+
+### Bedienbarkeitsprüfung
+Für 1.8.0 wurde zusätzlich eine statische UI-Prüfung durchgeführt. Kontrolliert wurden u. a.:
+- eindeutige HTML-IDs
+- JavaScript-Selektoren gegen vorhandene statische oder dynamisch erzeugte Felder
+- statische Buttons auf erreichbare Event-Handler bzw. deklarative Aktionen
+- Formulareingaben auf JavaScript-Anbindung
+- sichtbare Such-/Filterfelder auf Beschriftung bzw. `aria-label`
+- JavaScript-Syntax
+- Erhalt der bestehenden Drive-/Kalender-Konfiguration und des eingebetteten KassenKumpel
+
+Details stehen in `USABILITY_AUDIT.md`.

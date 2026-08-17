@@ -246,3 +246,40 @@ Wichtige mobile Anpassungen:
 - Dialoge nutzen Smartphone-Vollbild und 16px-Eingaben/Touch-Ziele aus bestehendem Responsive-System.
 - Papierkorb, Verknüpfungsmanager, Beziehungen, Haushalte, Import und Export auf Smartphone ohne horizontale Seitenüberbreite testen.
 - Tablet: Monatskalender und Desktop-Strukturen bleiben nutzbar.
+
+## V-Planer 1.8.0 – Übersicht
+- Kennzahl Offene Aufgaben anklicken → Aufgabenbereich.
+- Kennzahl Aktive Projekte anklicken → Projektbereich.
+- Kennzahl Mitglieder anklicken → Mitgliederbereich.
+- Prüfen: keine separate Kennzahl „Nächster Geburtstag“ mehr.
+- Runden Geburtstag über `×` aus Übersicht ausblenden: Mitglied und Geburtstag müssen in anderen Bereichen erhalten bleiben.
+- Jubiläum über `×` aus Übersicht ausblenden: Mitglied und Vereinsjahr müssen unverändert bleiben.
+- Sonderhinweis oben über `×` schließen und Seite neu rendern: Hinweis darf für den vorgesehenen Zeitraum nicht sofort wieder erscheinen.
+
+## V-Planer 1.8.0 – Verknüpfungen
+- In Aufgaben, Projekten, Terminen, Mitgliedern, Gruppen, Funktionen, Sitzungen, Dokumenten, Vereinswissen und Strafen prüfen: kompakte Büroklammer statt ausgeschriebenem Verknüpfen-Button.
+- Büroklammer ohne Verknüpfung öffnen und neue Verknüpfung anlegen.
+- Büroklammer mit vorhandenen Verknüpfungen: Anzahl prüfen.
+- Verknüpfung lösen: Originaldatensätze bleiben erhalten.
+- Projekt ↔ Termin und Vereinswissen ↔ Dokumente weiterhin separat prüfen.
+
+## V-Planer 1.8.0 – Funktionen & Ämter
+- Ohne ausgewählte Gruppe über „+ Funktion / Amt“ neue Funktion anlegen.
+- Funktion mit und ohne Person speichern.
+- Beginn/Ende mit Ende vor Beginn muss abgewiesen werden.
+- Suche nach Funktionsname und Mitglied testen.
+- Filter Aktuell / Künftig / Früher / Unbesetzt testen.
+- Funktion aus globaler Übersicht bearbeiten und speichern.
+- Funktion im Gruppendetail bearbeiten.
+- Künftige Funktion darf nicht unter „Aktuelle Funktionen“ erscheinen.
+- Vereinsdaten → Vorsitz/Schriftführung/Kasse: nur aktuelle Funktionen standardmäßig anbieten.
+
+## V-Planer 1.8.0 – Einstellungen
+- Desktop: alle sieben Unterbereiche über linkes Menü öffnen.
+- Desktop: Einstellungsmenü einklappen und wieder ausklappen; Zustand nach Neuladen prüfen.
+- Smartphone/Tablet: aufklappbares Einstellungsmenü testen.
+- Speicher & Sync darf nicht mehr als eigener Hauptnavigationspunkt erscheinen.
+- Dashboard → Speicher & Synchronisation → Einstellungen öffnet direkt Speicher & Sync.
+- Google Drive verbinden / Jetzt synchronisieren im Einstellungsbereich testen.
+- Speicherlimit und Bildkomprimierung ändern, Einstellungen speichern, neu laden.
+- Backup & Daten: globaler Speichern-Button soll dort nicht unnötig im Vordergrund stehen.
