@@ -1,6 +1,6 @@
-# V-Planer 1.0.4 — Drive, Kalender-Sync, Vereinsjahr & Strafkatalog
+# V-Planer 1.7.0 — Suche, Verknüpfungen, Papierkorb, Mitglieder-Datenaustausch & Mobile Agenda
 
-V-Planer 1.0.4 ist als responsive PWA für Desktop, Tablet und Smartphone ausgelegt.
+V-Planer 1.7.0 ist als responsive PWA für Desktop, Tablet und Smartphone ausgelegt.
 
 ## Schwerpunkte
 - Aufgaben, Projekte, Kanban, Kalender und Vereinsjahr
@@ -597,3 +597,167 @@ Unter **Einstellungen → Warnungen & Erinnerungen** gibt es jetzt:
 Standardmäßig: `20, 30, 40, 50, 60, 70, 80, 90, 100`.
 
 Runde Geburtstage werden auf der Übersicht mit 🎉 und dem Hinweis **Runder Geburtstag** hervorgehoben. In den nächsten 30 Tagen anstehende runde Geburtstage erscheinen außerdem im Hinweisstreifen. Das Vereinsjahr markiert sie ebenfalls besonders.
+
+## Explorer-Ordnerstruktur
+
+Die Ordnerbäume in **Sitzungen & Beschlüsse**, **Dokumente & Bilder** und **Vereinswissen** verhalten sich jetzt ähnlich wie der Windows-Explorer.
+
+- Ordner mit Unterordnern besitzen links einen Pfeil.
+- Der Pfeil klappt ausschließlich die Unterordner ein oder aus.
+- Ein Klick auf den Ordnernamen öffnet weiterhin den Ordner.
+- Der aktuell geöffnete Pfad wird automatisch aufgeklappt.
+- Auf Smartphone und Tablet sind die Auf-/Zuklappflächen vergrößert.
+
+### Rekursives Löschen
+
+Wird ein Ordner gelöscht, wird jetzt der **gesamte darunterliegende Ordnerbaum** gelöscht.
+
+Die Sicherheitsabfrage zeigt vorher an:
+- Anzahl der Unterordner
+- Anzahl der Dateien
+- Anzahl der betroffenen Sitzungs-/Beschluss- bzw. Vereinswissenseinträge
+
+Dateien und Drive-Ordner werden in den Google-Drive-Papierkorb verschoben. Die zugehörigen V-Planer-Datensätze werden als gelöscht markiert. Dadurch bleiben keine verwaisten Unterordner oder Dateiverweise zurück.
+
+## Dokumente & Bilder als neutrales Dateiarchiv
+
+Der Bereich **Dokumente & Bilder** verwendet keine zusätzlichen Kategorien mehr. Die bisherige Trennung in Protokolle, Dokumente und Bilder wurde aus der Oberfläche entfernt.
+
+Die Organisation erfolgt jetzt ausschließlich über:
+- Ordner und Unterordner
+- Explorer-artiges Ein-/Ausklappen
+- Suche im aktuell geöffneten Ordner
+- Datei öffnen, exportieren, verschieben und löschen
+- Ordner-/Bereichsexport
+
+Bereits vorhandene Dateien behalten ihre bisherigen Metadaten, damit keine Daten verloren gehen. Die alte Kategorie wird in der Oberfläche aber nicht mehr zur Organisation verwendet.
+
+## Vereinswissen mit Dokumenten verknüpfen
+
+Wissenseinträge können jetzt mehrere Dateien aus **Dokumente & Bilder** referenzieren.
+
+Beim Erstellen oder Bearbeiten eines Wissenseintrags gibt es den Bereich **Zugehörige Dokumente** mit Suchfeld und Mehrfachauswahl. Die Dateien werden nicht kopiert oder dupliziert.
+
+Auf einer Wissenskarte werden verknüpfte Dokumente direkt angezeigt und können geöffnet oder exportiert werden.
+
+Wird nur die Verknüpfung entfernt, bleibt die Datei im Dokumentenarchiv erhalten. Wird eine Datei selbst gelöscht, entfernt V-Planer automatisch alle Verweise auf diese Datei aus dem Vereinswissen.
+
+In **Dokumente & Bilder** wird bei einer Datei außerdem angezeigt, wie oft sie im Vereinswissen verknüpft ist.
+
+## V-Planer 1.4.0 – Vereinsstammdaten
+
+Der Einstellungsbereich **Vereinsdaten** wurde zu einer zentralen Stammdatenverwaltung erweitert.
+
+Enthalten sind:
+- offizieller Vereinsname und Kurzname
+- komprimiertes Vereinslogo
+- Gründungsdatum und Rechtsform
+- Vereinsanschrift
+- E-Mail, Telefon und Website
+- Vereinsregister-Nummer und Registergericht
+- Steuernummer und zuständiges Finanzamt
+- Geschäftsjahr von/bis
+- Vereinsheim bzw. Standardort mit eigener Anschrift
+- Vereinsbeschreibung und interne Hinweise
+- Verknüpfungen zu den bestehenden Funktionen für Vorsitz, Schriftführung und Kasse
+
+Die verantwortlichen Personen werden **nicht doppelt gespeichert**. Die Stammdaten verweisen auf bereits vorhandene Funktionen. Wechselt die besetzte Person einer Funktion, bleibt die Verknüpfung zur Funktion bestehen.
+
+Die bisherige Angabe **Eigene Rolle** wurde in eine separate Karte **Eigenes Profil** verschoben, weil sie zum Benutzer und nicht zu den Vereinsstammdaten gehört.
+
+Das Vereinslogo und der Kurzname werden bereits auf der digitalen Mitgliedskarte verwendet.
+
+### Kompatibilität
+
+Bestehende Datenbanken werden automatisch normalisiert. Die bisherigen Felder `clubName` und `userRole` bleiben aus Kompatibilitätsgründen erhalten. Google-Drive-Storage-Key und AppData-Dateiname bleiben ebenfalls unverändert, damit bestehende Cloud-Daten ohne Migration weiterverwendet werden können.
+
+## V-Planer 1.5.0 – Suche, Verknüpfungen & Papierkorb
+
+### Zentrale Suche
+Die Suche in der oberen Leiste durchsucht bereichsübergreifend:
+- Aufgaben
+- Projekte
+- Termine
+- Mitglieder
+- Gruppen
+- Funktionen
+- Sitzungen & Beschlüsse
+- Dokumente & Bilder
+- Vereinswissen
+- Strafen
+
+Treffer öffnen direkt den passenden Datensatz. Auf dem Smartphone wird die Suche über die Lupe geöffnet. `Strg+K` bzw. `Cmd+K` fokussiert die Suche auf Desktop-Geräten.
+
+### Allgemeines Verknüpfungssystem
+Aufgaben, Projekte, Termine, Mitglieder, Gruppen, Funktionen, Sitzungen, Dokumente, Vereinswissen und Strafen können miteinander verknüpft werden.
+
+Bereits vorhandene Spezialbeziehungen werden weiterverwendet:
+- Projekt ↔ Termin
+- Projekt ↔ Aufgaben
+- Vereinswissen ↔ Dokumente
+
+Damit entstehen keine doppelten Datensätze. Zusätzliche Beziehungen werden in der Collection `links` gespeichert.
+
+### Papierkorb
+Gelöschte Datensätze werden zunächst im V-Planer-Papierkorb angezeigt und können wiederhergestellt oder endgültig gelöscht werden.
+
+Bei rekursiv gelöschten Ordnern bzw. Gruppen werden zusammengehörige Inhalte über eine Lösch-Batch-ID gemeinsam behandelt. Dateien und Ordner werden beim Wiederherstellen nach Möglichkeit auch aus dem Google-Drive-Papierkorb zurückgeholt.
+
+Beim endgültigen Löschen bleiben intern minimale Tombstones mit `deletedAt`/`purgedAt` erhalten. Dadurch kann ein älterer Cloud-Stand einen endgültig gelöschten Datensatz nicht unbeabsichtigt wiederherstellen.
+
+## V-Planer 1.6.0 – Mitgliederbeziehungen & Datenaustausch
+
+### Echte Mitgliederbeziehungen
+Beziehungen werden strukturiert zwischen zwei Mitgliedern gespeichert, z. B.:
+- Mutter / Vater / Elternteil
+- Kind
+- Partner/in
+- Geschwister
+- gesetzliche Vertretung
+- sonstige Beziehung
+
+Die Gegenbeziehung wird automatisch gesetzt. Bestehender alter Freitext bleibt lesbar, damit keine Altinformationen verloren gehen.
+
+### Haushalte
+Mitglieder können einem gemeinsamen Haushalt zugeordnet werden. Ein Haushalt besitzt:
+- Namen
+- optionale gemeinsame Anschrift
+- mehrere zugeordnete Mitglieder
+
+### CSV-/Excel-Import
+Der Mitgliederimport unterstützt `.csv` und `.xlsx`:
+1. Datei auswählen
+2. Spalten automatisch erkennen bzw. manuell zuordnen
+3. Vorschau prüfen
+4. optional bestehende Mitglieder aktualisieren
+5. Import ausführen
+
+Vor jedem tatsächlichen Import erzeugt V-Planer automatisch ein Sicherheitsbackup. Dubletten werden zuerst über die Mitgliedsnummer und anschließend über Name + Geburtsdatum erkannt.
+
+Der XLSX-Import nutzt Browserfunktionen zum Lesen des OpenXML-ZIP-Formats. Falls ein älterer Browser die benötigte Dekomprimierung nicht unterstützt, kann derselbe Datenbestand als CSV importiert werden.
+
+### Mitgliederexport
+Mitglieder können als:
+- Excel `.xlsx`
+- CSV `.csv`
+
+exportiert werden. Es lassen sich alle Mitglieder oder nur die aktuell gefilterte Liste sowie die gewünschten Felder auswählen. Die Excel-Datei enthält eine formatierte Kopfzeile, sinnvolle Spaltenbreiten und eine fixierte erste Zeile.
+
+## V-Planer 1.7.0 – Smartphone & Kalender-Agenda
+
+Auf kleinen Displays startet der Kalender standardmäßig in einer Agenda-Ansicht. Dort werden Termine, Aufgaben, Projekte, Geburtstage, runde Geburtstage und konfigurierte Vereinsjubiläen chronologisch dargestellt.
+
+Über **Agenda | Monat** kann jederzeit in den bisherigen Monatskalender gewechselt werden. Die Auswahl wird lokal gespeichert.
+
+Weitere mobile Verbesserungen:
+- Mitgliederliste als Kartenansicht
+- Aufgabenliste als Kartenansicht
+- Vollbild-Dialoge
+- touchfreundliche Aktionsflächen
+- mobile globale Suche
+- responsive Papierkorb-, Verknüpfungs-, Import- und Exportdialoge
+
+Der 42-Zellen-Monatskalender für Desktop/Tablet bleibt vollständig erhalten.
+
+## Technischer Hinweis zu Google APIs
+Die Änderungen wurden statisch und syntaktisch geprüft. Live-Zugriffe gegen das konkrete Google-Drive- bzw. Google-Kalender-Konto sind Bestandteil des späteren Praxistests im realen Deployment und werden hier nicht als erfolgreich getestet behauptet.

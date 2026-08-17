@@ -159,3 +159,90 @@ Wichtige mobile Anpassungen:
 - Altersstufe 50 aus Einstellungen entfernen: Geburtstag wird wieder normal dargestellt.
 - Runder Geburtstag innerhalb 30 Tagen: Hinweisstreifen prüfen.
 - Vereinsjahr: runden Geburtstag optisch prüfen.
+
+## Explorer-Ordnerbaum testen
+- In allen drei Bereichen einen Ordner mit mindestens zwei Ebenen Unterordnern anlegen.
+- Pfeil am Elternordner anklicken: Unterordner müssen ein-/ausklappen, ohne den aktuellen Ordner zu wechseln.
+- Ordnername anklicken: Ordner muss geöffnet werden.
+- Einen tiefen Unterordner über Breadcrumb öffnen: der gesamte Pfad muss sichtbar/aufgeklappt sein.
+- Smartphone prüfen: Auf-/Zuklapp-Pfeile müssen touchfreundlich sein.
+
+## Rekursives Ordnerlöschen testen
+- Elternordner mit Unterordnern, Dateien und ggf. Sitzungs-/Wissenseinträgen anlegen.
+- Löschen: Bestätigungsdialog muss Anzahl Unterordner/Dateien/Einträge nennen.
+- Bestätigen: kompletter Baum muss aus V-Planer verschwinden.
+- Dateien/Drive-Ordner anschließend im Google-Drive-Papierkorb prüfen.
+- Abbrechen: keinerlei Daten dürfen verändert werden.
+
+## Dokumente & Bilder ohne Kategorien
+- Prüfen: keine Kategorie-Kacheln mehr sichtbar.
+- Prüfen: beim Datei-/Ordnerupload keine Kategorie-Auswahl mehr.
+- Datei hochladen und nach Dateiname suchen.
+- Explorer-Ordner, Verschieben und Export weiterhin testen.
+
+## Vereinswissen ↔ Dokumente
+- Mehrere Dateien unter Dokumente & Bilder anlegen.
+- Wissenseintrag erstellen und mehrere Dokumente auswählen.
+- Speichern: Dokumente müssen auf der Wissenskarte erscheinen.
+- Dokument öffnen und exportieren.
+- Wissenseintrag bearbeiten und eine Verknüpfung entfernen: Datei muss erhalten bleiben.
+- Dieselbe Datei mit zwei Wissenseinträgen verknüpfen: Dokumentenliste muss 2× anzeigen.
+- Datei im Dokumentenbereich löschen: Verknüpfungen müssen automatisch aus allen Wissenseinträgen verschwinden.
+- Dokumentenordner rekursiv löschen: Verknüpfungen zu enthaltenen Dateien müssen verschwinden.
+- Smartphone: Dokumentauswahl und verknüpfte Dokumentzeilen ohne horizontales Scrollen testen.
+
+## V-Planer 1.4.0 – Vereinsdaten
+- Bestehenden Datenbestand laden: alte Vereinsnamen-/Rollenfelder müssen erhalten bleiben.
+- Grunddaten speichern und Seite neu laden.
+- Vereinslogo auswählen, speichern, neu laden und wieder entfernen.
+- Vereinsanschrift, Kontakt, Registerdaten, Geschäftsjahr und Standardort testen.
+- Funktionen für Vorsitz, Schriftführung und Kasse auswählen; Funktionsoption muss Person und Gruppe anzeigen.
+- Bereits ausgewählte, inzwischen beendete Funktion muss weiterhin erkennbar bleiben.
+- Digitale Mitgliedskarte öffnen: Kurzname/Vereinsname und Vereinslogo prüfen.
+- Smartphone: Vereinsdaten einspaltig, Logo-Editor touchfreundlich und keine horizontale Überbreite.
+- Tablet/Desktop: zweispaltige Vereinsdatenabschnitte prüfen.
+
+## V-Planer 1.5.0 – Suche, Verknüpfungen & Papierkorb
+- Zentrale Suche mit Begriff testen, der in Aufgabe, Projekt, Mitglied, Sitzung, Dokument und Vereinswissen vorkommt.
+- Treffer aus jedem Bereich direkt öffnen.
+- Desktop: Strg/Cmd+K fokussiert die globale Suche.
+- Smartphone: Lupe öffnet Suche; Suchtreffer dürfen nicht abgeschnitten werden.
+- Aufgabe ↔ Dokument, Mitglied ↔ Projekt, Sitzung ↔ Vereinswissen und Strafe ↔ Dokument verknüpfen.
+- Spezialverknüpfungen Projekt ↔ Termin und Vereinswissen ↔ Dokument weiterhin testen.
+- Verknüpfung lösen: beide Originaldatensätze müssen erhalten bleiben.
+- Datensatz löschen → Papierkorb → wiederherstellen.
+- Projekt mit Aufgaben/Termin löschen und wiederherstellen: Beziehungen müssen erhalten bleiben.
+- Ordnerbaum rekursiv löschen und als einen zusammengehörigen Papierkorb-Eintrag wiederherstellen.
+- Gruppe mit Untergruppen/Funktionen löschen und wiederherstellen.
+- Endgültig löschen: Eintrag verschwindet aus Papierkorb; nach Drive-Sync darf er nicht wieder auftauchen.
+
+## V-Planer 1.6.0 – Mitgliederbeziehungen & Import/Export
+- Mutter/Vater/Kind/Partner/Geschwister/Vertretung zwischen zwei Mitgliedern anlegen.
+- Gegenbeziehung aus Sicht des zweiten Mitglieds kontrollieren.
+- Beziehung lösen: beide Mitglieder bleiben erhalten.
+- Haushalt anlegen, mehrere Mitglieder zuordnen, gemeinsame Anschrift speichern.
+- Mitglied direkt einem Haushalt zuordnen.
+- Haushalt in Papierkorb verschieben und wiederherstellen.
+- CSV mit Semikolon, Komma und Tabulator testen.
+- CSV mit Anführungszeichen und Zeilenumbrüchen testen.
+- XLSX mit Shared Strings und Inline Strings testen.
+- Import-Mapping prüfen; Vorschau kontrollieren.
+- Dubletten über Mitgliedsnummer sowie Name + Geburtsdatum testen.
+- Import ohne „Aktualisieren“ darf Dubletten nicht überschreiben.
+- Import mit „Aktualisieren“ darf leere Zellen nicht über bestehende Werte schreiben.
+- Vor Import muss ein Sicherheitsbackup erzeugt werden.
+- Export als CSV und XLSX testen.
+- XLSX in Excel/LibreOffice öffnen: Kopfzeile, Spaltenbreiten und fixierte erste Zeile prüfen.
+- Export „aktuelle Filter/Suche“ testen.
+
+## V-Planer 1.7.0 – Smartphone
+- Smartphone ≤760 px: Kalender startet ohne gespeicherte Präferenz in Agenda.
+- Agenda zeigt Termine, Aufgaben, Projekte, Geburtstage und Jubiläen.
+- Agenda-Eintrag öffnet den korrekten Datensatz.
+- Umschalten Agenda ↔ Monat; Einstellung nach Neuladen erhalten.
+- Monatsansicht bleibt vollständig mit 42 Zellen und horizontal bedienbar.
+- Mitgliederliste wird als Kartenansicht dargestellt.
+- Aufgabenliste wird als Kartenansicht dargestellt.
+- Dialoge nutzen Smartphone-Vollbild und 16px-Eingaben/Touch-Ziele aus bestehendem Responsive-System.
+- Papierkorb, Verknüpfungsmanager, Beziehungen, Haushalte, Import und Export auf Smartphone ohne horizontale Seitenüberbreite testen.
+- Tablet: Monatskalender und Desktop-Strukturen bleiben nutzbar.

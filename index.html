@@ -54,12 +54,13 @@
       </div>
 
       <div class="nav-section">System</div>
+      <button class="nav-btn" data-view="trash">🗑️ <span>Papierkorb</span><span class="nav-count" id="trashNavCount"></span></button>
       <button class="nav-btn" data-view="storage">☁️ <span>Speicher & Sync</span></button>
       <button class="nav-btn" data-view="settings">⚙️ <span>Einstellungen</span></button>
     </nav>
 
     <div class="sidebar-footer">
-      <small>V-Planer Cloud · 1.0.4</small>
+      <small>V-Planer Cloud · 1.7.0</small>
     </div>
   </aside>
 
@@ -71,6 +72,15 @@
           <h1 id="pageTitle">Übersicht</h1>
           <div id="pageSubtitle" class="subtitle">Heute, diese Woche und alles Wichtige im Blick.</div>
         </div>
+      </div>
+      <div class="global-search" id="globalSearchWrap">
+        <button class="global-search-mobile-btn" id="globalSearchMobileBtn" type="button" aria-label="V-Planer durchsuchen">⌕</button>
+        <div class="global-search-field">
+          <span aria-hidden="true">⌕</span>
+          <input id="globalSearchInput" type="search" autocomplete="off" placeholder="V-Planer durchsuchen …" aria-label="V-Planer durchsuchen">
+          <button id="globalSearchClear" type="button" aria-label="Suche leeren">×</button>
+        </div>
+        <div class="global-search-results" id="globalSearchResults" hidden></div>
       </div>
       <div class="top-actions">
         <div class="sync-indicator">
@@ -160,7 +170,13 @@
       <section class="view" id="view-kanban"><div class="board" id="kanbanBoard"></div></section>
 
       <section class="view" id="view-calendar">
-        <div class="toolbar"><button class="btn primary" data-action="new-event">+ Termin</button></div>
+        <div class="toolbar calendar-view-toolbar">
+          <div class="calendar-mode-toggle" role="group" aria-label="Kalenderansicht">
+            <button class="btn secondary" id="calendarAgendaMode" type="button" data-calendar-mode="agenda">☷ Agenda</button>
+            <button class="btn secondary" id="calendarMonthMode" type="button" data-calendar-mode="month">▦ Monat</button>
+          </div>
+          <button class="btn primary" data-action="new-event">+ Termin</button>
+        </div>
         <div class="calendar-layout">
           <div class="card calendar-card">
             <div class="calendar-head">
@@ -178,6 +194,7 @@
               <span><i class="legend-dot birthday-dot"></i>Geburtstag</span>
             </div>
             <div class="calendar-grid" id="calendarGrid"></div>
+            <div class="calendar-agenda" id="calendarAgenda"></div>
           </div>
           <div class="card calendar-side-card"><div class="card-head"><h2>Nächste Einträge</h2></div><div class="card-body" id="calendarSideList"></div></div>
         </div>
@@ -288,6 +305,10 @@
             </select>
             <button class="btn secondary" id="memberSortDir" type="button">↑ Aufsteigend</button>
           </div>
+          <button class="btn secondary" id="memberImportBtn" type="button">⇧ Import</button>
+          <button class="btn secondary" id="memberExportBtn" type="button">⇩ Export</button>
+          <button class="btn secondary" id="householdManagerBtn" type="button">⌂ Haushalte</button>
+          <input id="memberImportInput" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
           <button class="btn primary" data-action="new-member">+ Mitglied</button>
         </div>
         <div class="member-layout">
@@ -310,7 +331,7 @@
         </div>
         <div class="group-layout">
           <div class="card"><div class="card-head"><h2>Gruppenstruktur</h2></div><div class="card-body tree" id="groupTree"></div></div>
-          <div class="card"><div class="card-head"><h2 id="groupDetailTitle">Gruppendetails</h2><div class="head-actions"><button class="btn tiny secondary" id="editGroupBtn">Bearbeiten</button><button class="btn tiny danger" id="deleteGroupBtn">Löschen</button></div></div><div class="card-body" id="groupDetail"></div></div>
+          <div class="card"><div class="card-head"><h2 id="groupDetailTitle">Gruppendetails</h2><div class="head-actions"><button class="btn tiny secondary" id="linkGroupBtn" type="button">Verknüpfen</button><button class="btn tiny secondary" id="editGroupBtn">Bearbeiten</button><button class="btn tiny danger" id="deleteGroupBtn">Löschen</button></div></div><div class="card-body" id="groupDetail"></div></div>
         </div>
       </section>
 
@@ -351,7 +372,10 @@
       </section>
 
       <section class="view" id="view-documents">
-        <div class="toolbar"><button class="btn secondary" type="button" data-new-folder="documents">+ Ordner</button></div>
+        <div class="toolbar">
+          <input class="search" id="documentSearch" placeholder="Dateien im aktuellen Ordner durchsuchen …">
+          <button class="btn secondary" type="button" data-new-folder="documents">+ Ordner</button>
+        </div>
         <div class="content-browser-layout">
           <aside class="card folder-panel">
             <div class="card-head"><h2>Ordner</h2></div>
@@ -367,17 +391,16 @@
               </div>
               <div class="folder-export-status" data-export-status="documents" aria-live="polite"></div>
             </div>
-            <div class="doc-categories" id="docCategories"></div>
             <div class="card upload-card"><div class="upload-zone">
-              <div><h3>Datei hochladen</h3><p>Word, PDF, Excel, Präsentationen, Bilder und weitere Dateien. Ganze Ordner werden mit ihrer Unterordnerstruktur in V-Planer und Google Drive angelegt.</p></div>
+              <div><h3>Dateien ablegen</h3><p>PDF, Word, Excel, Präsentationen, Bilder und andere Vereinsdateien. Die Einordnung erfolgt ausschließlich über deine Ordnerstruktur – zusätzliche Kategorien sind nicht nötig.</p></div>
               <input id="fileInput" type="file" multiple>
               <input id="documentFolderInput" class="folder-upload-input" type="file" webkitdirectory directory multiple>
               <button class="btn secondary" id="documentFolderUploadBtn" type="button">Ordner hochladen</button>
               <div class="folder-upload-status" id="documentFolderUploadStatus" aria-live="polite"></div>
-              <select id="docCategory"><option>Protokolle</option><option>Dokumente</option><option>Bilder</option></select>
               <button class="btn primary" id="uploadBtn" type="button">In Drive hochladen</button>
             </div></div>
-            <div class="card table-card"><div class="table-wrap"><table class="table area-file-table"><thead><tr><th>Name</th><th>Kategorie</th><th>Größe</th><th>Datum</th><th></th></tr></thead><tbody id="docTable"></tbody></table></div></div>
+            <div class="browser-section-title"><h2>Dateien</h2><span id="documentFolderCount" class="mini-meta"></span></div>
+            <div class="card table-card"><div class="table-wrap"><table class="table area-file-table"><thead><tr><th>Name</th><th>Typ</th><th>Größe</th><th>Datum</th><th></th></tr></thead><tbody id="docTable"></tbody></table></div></div>
           </div>
         </div>
       </section>
@@ -419,6 +442,33 @@
         </div>
       </section>
 
+      <section class="view" id="view-trash">
+        <div class="toolbar trash-toolbar">
+          <input class="search" id="trashSearch" placeholder="Papierkorb durchsuchen …">
+          <select id="trashTypeFilter" aria-label="Papierkorb filtern">
+            <option value="">Alle Bereiche</option>
+            <option value="tasks">Aufgaben</option>
+            <option value="projects">Projekte</option>
+            <option value="events">Termine</option>
+            <option value="members">Mitglieder</option>
+            <option value="groups">Gruppen</option>
+            <option value="functions">Funktionen</option>
+            <option value="meetings">Sitzungen & Beschlüsse</option>
+            <option value="knowledge">Vereinswissen</option>
+            <option value="documents">Dokumente & Bilder</option>
+            <option value="folders">Ordner</option>
+            <option value="fines">Strafen</option>
+            <option value="households">Haushalte</option>
+          </select>
+          <button class="btn danger" id="emptyTrashBtn" type="button">Papierkorb leeren</button>
+        </div>
+        <div class="card trash-info">
+          <div><b>Papierkorb</b><span>Gelöschte Inhalte können wiederhergestellt oder endgültig entfernt werden. Ordner werden inklusive ihrer gelöschten Unterstruktur behandelt.</span></div>
+          <strong id="trashCount">0</strong>
+        </div>
+        <div class="trash-list" id="trashList"></div>
+      </section>
+
       <section class="view" id="view-storage">
         <div class="storage-grid">
           <div class="card"><div class="card-head"><h2>Speicherübersicht</h2></div><div class="card-body" id="storageDetail"></div></div>
@@ -428,9 +478,97 @@
 
       <section class="view" id="view-settings">
         <div class="settings-grid">
+          <div class="card setting-card club-masterdata-card settings-wide">
+            <div class="club-masterdata-head">
+              <div>
+                <h2>Vereinsdaten</h2>
+                <p class="setting-help">Zentrale Stammdaten des Vereins. Diese Angaben können später für Ausweise, Dokumente, Exporte und Vorlagen verwendet werden.</p>
+              </div>
+              <span class="settings-version-badge">V-Planer 1.7.0</span>
+            </div>
+
+            <div class="club-data-layout">
+              <section class="club-data-section club-data-brand">
+                <h3>Grunddaten</h3>
+                <div class="club-logo-editor">
+                  <div id="clubLogoPreview" class="club-logo-preview" aria-label="Vereinslogo Vorschau"></div>
+                  <div class="club-logo-controls">
+                    <label>Vereinslogo
+                      <input id="clubLogoInput" type="file" accept="image/*">
+                    </label>
+                    <button class="btn tiny secondary" id="clubLogoRemoveBtn" type="button">Logo entfernen</button>
+                    <small>Wird komprimiert in den V-Planer-Stammdaten gespeichert.</small>
+                  </div>
+                </div>
+                <div class="club-data-fields two">
+                  <label>Offizieller Vereinsname<input id="clubName" autocomplete="organization"></label>
+                  <label>Kurzname / Abkürzung<input id="clubShortName" placeholder="z. B. TSV Musterstadt"></label>
+                  <label>Gründungsdatum<input id="clubFoundedDate" type="date"></label>
+                  <label>Rechtsform<input id="clubLegalForm" list="clubLegalForms" placeholder="z. B. e. V."></label>
+                  <datalist id="clubLegalForms">
+                    <option value="e. V."><option value="nicht eingetragener Verein"><option value="gGmbH"><option value="Sonstige">
+                  </datalist>
+                </div>
+              </section>
+
+              <section class="club-data-section">
+                <h3>Anschrift & Kontakt</h3>
+                <div class="club-data-fields two">
+                  <label class="full">Straße / Hausnummer<input id="clubStreet" autocomplete="street-address"></label>
+                  <label>PLZ<input id="clubZip" inputmode="numeric" autocomplete="postal-code"></label>
+                  <label>Ort<input id="clubCity" autocomplete="address-level2"></label>
+                  <label>E-Mail<input id="clubEmail" type="email" autocomplete="email"></label>
+                  <label>Telefon<input id="clubPhone" type="tel" autocomplete="tel"></label>
+                  <label class="full">Website<input id="clubWebsite" type="url" placeholder="https://…"></label>
+                </div>
+              </section>
+
+              <section class="club-data-section">
+                <h3>Register & Verwaltung</h3>
+                <div class="club-data-fields two">
+                  <label>Vereinsregister-Nr.<input id="clubRegisterNo" placeholder="z. B. VR 1234"></label>
+                  <label>Registergericht<input id="clubRegisterCourt"></label>
+                  <label>Steuernummer<input id="clubTaxNo"></label>
+                  <label>Zuständiges Finanzamt<input id="clubTaxOffice"></label>
+                  <label>Geschäftsjahr von<input id="clubFiscalStart" placeholder="01.01."></label>
+                  <label>Geschäftsjahr bis<input id="clubFiscalEnd" placeholder="31.12."></label>
+                </div>
+              </section>
+
+              <section class="club-data-section">
+                <h3>Vereinsheim / Standardort</h3>
+                <div class="club-data-fields two">
+                  <label class="full">Bezeichnung<input id="clubVenueName" placeholder="z. B. Vereinsheim"></label>
+                  <label class="full">Straße / Hausnummer<input id="clubVenueStreet"></label>
+                  <label>PLZ<input id="clubVenueZip" inputmode="numeric"></label>
+                  <label>Ort<input id="clubVenueCity"></label>
+                </div>
+              </section>
+
+              <section class="club-data-section club-data-functions">
+                <h3>Verantwortliche Funktionen</h3>
+                <p class="setting-help">Die Personen werden nicht doppelt gepflegt. Verknüpfe hier bereits angelegte Funktionen aus dem Vereinsbereich.</p>
+                <div class="club-data-fields three">
+                  <label>Vorsitz<select id="clubChairFunction"></select></label>
+                  <label>Schriftführung<select id="clubSecretaryFunction"></select></label>
+                  <label>Kasse<select id="clubTreasurerFunction"></select></label>
+                </div>
+                <div class="club-function-note">Ändert sich die Besetzung einer Funktion, verwendet V-Planer automatisch die aktuelle verknüpfte Person.</div>
+              </section>
+
+              <section class="club-data-section">
+                <h3>Weitere Angaben</h3>
+                <div class="club-data-fields">
+                  <label>Kurze Vereinsbeschreibung<textarea id="clubDescription" rows="4" placeholder="Was macht den Verein aus?"></textarea></label>
+                  <label>Interne Hinweise<textarea id="clubInternalNotes" rows="4" placeholder="Nur für die interne Organisation relevante Hinweise …"></textarea></label>
+                </div>
+              </section>
+            </div>
+          </div>
+
           <div class="card setting-card">
-            <h2>Vereinsdaten</h2>
-            <label>Vereinsname<input id="clubName"></label>
+            <h2>Eigenes Profil</h2>
+            <p class="setting-help">Persönliche Angaben des aktuell verwendeten V-Planer-Profils. Diese gehören nicht zu den Vereinsstammdaten.</p>
             <label>Eigene Rolle<input id="userRole" placeholder="z. B. Vorsitzender"></label>
           </div>
 
@@ -535,7 +673,7 @@
             <div class="backup-action">
               <div>
                 <b>Komplettes Backup exportieren</b>
-                <small>Mitglieder, Aufgaben, Projekte, Termine, Gruppen, Sitzungen, Vereinswissen, Ordner, Einstellungen und Dokument-Metadaten.</small>
+                <small>Mitglieder, Beziehungen, Haushalte, Verknüpfungen, Aufgaben, Projekte, Termine, Gruppen, Sitzungen, Vereinswissen, Ordner, Einstellungen und Dokument-Metadaten.</small>
               </div>
               <button class="btn primary" id="exportBackupBtn" type="button">Backup exportieren</button>
             </div>
@@ -597,6 +735,7 @@
     <button data-view="documents" data-module="documents">📄 Dokumente & Bilder</button>
     <button data-view="knowledge" data-module="documents">📚 Vereinswissen</button>
     <div class="mobile-menu-section">System</div>
+    <button data-view="trash">🗑️ Papierkorb <span class="mobile-trash-count" id="mobileTrashCount"></span></button>
     <button data-view="storage">☁️ Speicher & Sync</button>
     <button data-view="settings">⚙️ Einstellungen</button>
   </div>

@@ -11,7 +11,7 @@ const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.app.created";
 const CALENDAR_GRANT_KEY = "v-planer-calendar-grant-known-v1";
 const CALENDAR_ID_KEY = "v-planer-google-calendar-id-v1";
 const CALENDAR_PREFS_KEY = "v-planer-google-calendar-prefs-v1";
-const COLLECTIONS = ["tasks","projects","events","members","groups","functions","meetings","knowledge","documents","folders","fines"];
+const COLLECTIONS = ["tasks","projects","events","members","groups","functions","meetings","knowledge","documents","folders","fines","links","memberRelations","households"];
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -27,21 +27,46 @@ const ageAt = (birth, onDate=new Date()) => { if(!birth) return null; const b=ne
 
 function defaultDB(){
   return {
-    version:4, updatedAt:now(), settingsUpdatedAt:now(),
+    version:7, updatedAt:now(), settingsUpdatedAt:now(),
     settings:{
       clubName:"Mein Verein", userRole:"Vorstand", uiScale:100, storageLimitGB:CFG.DEFAULT_STORAGE_LIMIT_GB||5, compressImages:true, honoraryContributionFree:false,
+      clubData:{
+        shortName:"",
+        logoData:"",
+        foundedDate:"",
+        legalForm:"e. V.",
+        address:{street:"",zip:"",city:""},
+        contact:{email:"",phone:"",website:""},
+        registry:{registerNo:"",registerCourt:"",taxNo:"",taxOffice:""},
+        fiscalYearStart:"01.01.",
+        fiscalYearEnd:"31.12.",
+        venue:{name:"",street:"",zip:"",city:""},
+        responsibleFunctions:{chairFunctionId:"",secretaryFunctionId:"",treasurerFunctionId:""},
+        description:"",
+        internalNotes:""
+      },
       modules:{club:true,documents:true,finance:true},
       groupTypes:["Abteilung","Mannschaft","Trainingsgruppe","Vorstand","Ausschuss","Arbeitsgruppe","Projektgruppe"],
       fineCatalog:[],
       reminders:{enabled:true,infoDays:14,warningDays:7,alarmDays:2,birthdayWeek:true,roundBirthdays:true,roundBirthdayAges:[20,30,40,50,60,70,80,90,100],jubilee:true,jubileeYears:[10,20,25,30,40,50]}
     },
     counters:{memberNo:1},
-    tasks:[],projects:[],events:[],members:[],groups:[],functions:[],meetings:[],knowledge:[],documents:[],folders:[],fines:[],financeKassenKumpelState:null,financeKassenKumpelUpdatedAt:""
+    tasks:[],projects:[],events:[],members:[],groups:[],functions:[],meetings:[],knowledge:[],documents:[],folders:[],fines:[],links:[],memberRelations:[],households:[],financeKassenKumpelState:null,financeKassenKumpelUpdatedAt:""
   };
 }
 function normalizeDB(data){
   const base=defaultDB(), out={...base,...(data||{})};
   out.settings={...base.settings,...(data?.settings||{})};
+  const rawClubData=data?.settings?.clubData||{};
+  out.settings.clubData={
+    ...base.settings.clubData,
+    ...rawClubData,
+    address:{...base.settings.clubData.address,...(rawClubData.address||{})},
+    contact:{...base.settings.clubData.contact,...(rawClubData.contact||{})},
+    registry:{...base.settings.clubData.registry,...(rawClubData.registry||{})},
+    venue:{...base.settings.clubData.venue,...(rawClubData.venue||{})},
+    responsibleFunctions:{...base.settings.clubData.responsibleFunctions,...(rawClubData.responsibleFunctions||{})}
+  };
   out.settings.uiScale=Math.min(125,Math.max(80,Number(out.settings.uiScale)||100));
   out.settings.modules={...base.settings.modules,...(data?.settings?.modules||{})};
   out.settings.groupTypes=Array.isArray(data?.settings?.groupTypes)
@@ -103,6 +128,21 @@ let memberSort = {key:"name",dir:"asc"};
 let taskSort = {key:"due",dir:"asc"};
 let fineSort = {key:"date",dir:"desc"};
 let selectedFolderByArea = {meetings:"",documents:"",knowledge:""};
+let collapsedFoldersByArea = {meetings:new Set(),documents:new Set(),knowledge:new Set()};
+function folderIsCollapsed(area,folderId){
+  return !!folderId && !!collapsedFoldersByArea[area]?.has(folderId);
+}
+function toggleFolderCollapsed(area,folderId){
+  if(!folderId||!collapsedFoldersByArea[area])return;
+  const set=collapsedFoldersByArea[area];
+  if(set.has(folderId))set.delete(folderId);
+  else set.add(folderId);
+  renderArea(area);
+}
+function ensureFolderAncestorsExpanded(area,folderId){
+  folderChain(area,folderId).forEach(f=>collapsedFoldersByArea[area]?.delete(f.id));
+}
+
 const AREA_META = {
   meetings:{label:"Sitzungen & Beschlüsse",driveName:"Sitzungen und Beschlüsse"},
   documents:{label:"Dokumente & Bilder",driveName:"Dokumente und Bilder"},
@@ -127,7 +167,7 @@ function archivedRows(collection){
 function recordById(collection,id){ return allRows(collection).find(x=>x.id===id); }
 function byId(collection,id){ return activeRows(collection).find(x=>x.id===id); }
 function touch(rec){ rec.updatedAt=now(); return rec; }
-function markDeleted(collection,id){ const r=db[collection].find(x=>x.id===id); if(r){r.deletedAt=now();r.updatedAt=r.deletedAt;} }
+function markDeleted(collection,id,meta={}){ const r=db[collection].find(x=>x.id===id); if(r){r.deletedAt=now();r.updatedAt=r.deletedAt;Object.assign(r,meta||{});} }
 function saveLocal(opts={}){
   db.updatedAt=now(); localStorage.setItem(STORAGE_KEY,JSON.stringify(db)); renderAll();
   if(opts.autoSync!==false && accessToken) scheduleAutoSync();
@@ -950,7 +990,7 @@ function buildBackupPayload(){
   return {
     format:"V-Planer-Backup",
     backupVersion:1,
-    appVersion:"1.0.4",
+    appVersion:"1.7.0",
     exportedAt:now(),
     data:db
   };
@@ -1002,6 +1042,7 @@ async function importFullBackup(file){
   exportFullBackup("V-Planer_Vor_Import");
 
   db=imported;
+  clubLogoDraft=undefined;
   db.updatedAt=now();
   db.settingsUpdatedAt=now();
   localStorage.setItem(STORAGE_KEY,JSON.stringify(db));
@@ -1269,7 +1310,7 @@ function membersOfGroup(groupId,includeChildren=true){ const ids=[groupId,...(in
 function activeFunctionsForGroup(groupId){ const today=todayStr(); return activeRows("functions").filter(f=>f.groupId===groupId&&(!f.endDate||f.endDate>=today)); }
 function formerFunctionsForGroup(groupId){ const today=todayStr(); return activeRows("functions").filter(f=>f.groupId===groupId&&f.endDate&&f.endDate<today); }
 
-function pageMeta(view){return({dashboard:["Übersicht","Heute, diese Woche und alles Wichtige im Blick."],tasks:["Aufgaben","Offene Punkte, Zuständigkeiten und Fälligkeiten."],projects:["Projekte","Vorhaben wie in einer Projektzentrale planen und verfolgen."],kanban:["Kanban","Offen, In Arbeit, Warten und Erledigt."],calendar:["Kalender","Termine, Geburtstage und Vereinsereignisse."],year:["Vereinsjahr","Das Vereinsjahr auf einen Blick."],archive:["Archiv","Abgeschlossene Aufgaben und Projekte übersichtlich aufbewahren."],"finance-kasse":["KassenKumpel","Kassenbuch, Barkasse, Belege und Auswertungen."],"finance-fines":["Strafen","Strafen und Zahlungen der Vereinsmitglieder verwalten."],members:["Mitglieder","Stammdaten, Historie, Beziehungen, Ehrungen und Erinnerungen."],groups:["Gruppen","Gruppen, Untergruppen, Funktionen, Mannschaften und Statistiken."],meetings:["Sitzungen & Beschlüsse","Tagesordnungen, Protokolle und Entscheidungen."],documents:["Dokumente & Bilder","Quittungen, Protokolle, PDFs und Fotos."],knowledge:["Vereinswissen","Abläufe, Ansprechpartner und Erfahrungswissen."],storage:["Speicher & Sync","Google Drive, Datenvolumen und Synchronisation."],settings:["Einstellungen","Module, Warnungen und Grundkonfiguration."]})[view]||[view,""]}
+function pageMeta(view){return({dashboard:["Übersicht","Heute, diese Woche und alles Wichtige im Blick."],tasks:["Aufgaben","Offene Punkte, Zuständigkeiten und Fälligkeiten."],projects:["Projekte","Vorhaben wie in einer Projektzentrale planen und verfolgen."],kanban:["Kanban","Offen, In Arbeit, Warten und Erledigt."],calendar:["Kalender","Termine, Geburtstage und Vereinsereignisse."],year:["Vereinsjahr","Das Vereinsjahr auf einen Blick."],archive:["Archiv","Abgeschlossene Aufgaben und Projekte übersichtlich aufbewahren."],"finance-kasse":["KassenKumpel","Kassenbuch, Barkasse, Belege und Auswertungen."],"finance-fines":["Strafen","Strafen und Zahlungen der Vereinsmitglieder verwalten."],members:["Mitglieder","Stammdaten, Historie, Beziehungen, Ehrungen und Erinnerungen."],groups:["Gruppen","Gruppen, Untergruppen, Funktionen, Mannschaften und Statistiken."],meetings:["Sitzungen & Beschlüsse","Tagesordnungen, Protokolle und Entscheidungen."],documents:["Dokumente & Bilder","Dateien und Ordner zentral ablegen, strukturieren und mit Vereinswissen verknüpfen."],knowledge:["Vereinswissen","Abläufe, Ansprechpartner und Erfahrungswissen."],storage:["Speicher & Sync","Google Drive, Datenvolumen und Synchronisation."],trash:["Papierkorb","Gelöschte Inhalte wiederherstellen oder endgültig entfernen."],settings:["Einstellungen","Module, Warnungen und Grundkonfiguration."]})[view]||[view,""]}
 function applyModuleVisibility(){
   $$('[data-module="club"]').forEach(el=>el.classList.toggle("hidden",!db.settings.modules.club));
   $$('[data-module="documents"]').forEach(el=>el.classList.toggle("hidden",!db.settings.modules.documents));
@@ -1689,7 +1730,7 @@ function renderTasks(){
     <td><span class="badge ${reminderClass(t.due)}">${fmtDate(t.due)} · ${esc(dueText(t.due))}</span></td>
     <td>${priorityBadge(t.priority)}</td>
     <td><select data-task-status="${t.id}">${["open","doing","wait","done"].map(s=>`<option value="${s}" ${s===t.status?"selected":""}>${statusLabel(s)}</option>`).join("")}</select></td>
-    <td><button class="action-link" data-edit-task="${t.id}">Bearbeiten</button> ${t.status==="done"?`<button class="action-link archive-link" data-archive-task="${t.id}">Archivieren</button>`:""} <button class="action-link" data-delete-task="${t.id}">Löschen</button></td>
+    <td><button class="action-link" data-edit-task="${t.id}">Bearbeiten</button> <button class="action-link" data-manage-links="task" data-link-id="${t.id}">Verknüpfen</button> ${t.status==="done"?`<button class="action-link archive-link" data-archive-task="${t.id}">Archivieren</button>`:""} <button class="action-link" data-delete-task="${t.id}">Löschen</button></td>
   </tr>`).join(""):`<tr><td colspan="7" class="empty">Keine Aufgaben.</td></tr>`;
 
   updateTaskSortUI();
@@ -1786,7 +1827,7 @@ function renderProjects(){
 
       <div class="row project-card-actions">
         <span class="mini-meta">${st.open} offene Aufgabe${st.open===1?"":"n"}</span>
-        <span><button class="action-link" data-edit-project="${p.id}">Projekt bearbeiten</button> ${p.status==="closed"?`<button class="action-link archive-link" data-archive-project="${p.id}">Archivieren</button>`:""} <button class="action-link danger-text" data-delete-project="${p.id}">Löschen</button></span>
+        <span><button class="action-link" data-edit-project="${p.id}">Projekt bearbeiten</button> <button class="action-link" data-manage-links="project" data-link-id="${p.id}">Verknüpfen</button> ${p.status==="closed"?`<button class="action-link archive-link" data-archive-project="${p.id}">Archivieren</button>`:""} <button class="action-link danger-text" data-delete-project="${p.id}">Löschen</button></span>
       </div>
     </div>`;
   }).join(""):`<div class="empty">Keine Projekte.</div>`;
@@ -1825,13 +1866,11 @@ function renderProjects(){
     if(!p)return;
     const count=projectTasks(p.id).length,linkedEvent=linkedEventForProject(p);
     const details=[
-      count?`Die ${count} zugehörigen Aufgabe${count===1?"":"n"} werden nicht gelöscht, sondern zu eigenständigen Aufgaben ohne Projekt.`:"",
-      linkedEvent?`Der verknüpfte Termin „${linkedEvent.title}“ bleibt erhalten und wird nur vom Projekt getrennt.`:""
+      count?`Die ${count} zugehörigen Aufgabe${count===1?"":"n"} bleiben erhalten und werden beim Wiederherstellen des Projekts automatisch wieder zugeordnet.`:"",
+      linkedEvent?`Der verknüpfte Termin „${linkedEvent.title}“ bleibt erhalten; die Projektverknüpfung wird für eine mögliche Wiederherstellung beibehalten.`:""
     ].filter(Boolean).join("\n\n");
     const message=`Projekt „${p.name}“ wirklich löschen?${details?`\n\n${details}`:""}`;
     if(confirm(message)){
-      projectTasks(p.id).forEach(t=>{t.projectId="";touch(t)});
-      if(linkedEvent)detachProjectEvent(p,linkedEvent);
       markDeleted("projects",p.id);
       saveLocal();
     }
@@ -2040,6 +2079,8 @@ function renderCalendar(){
   }).join(""):`<div class="empty">Keine Einträge.</div>`;
   bindEventOpeners($("#calendarSideList"));
   bindCalendarWorkOpeners($("#calendarSideList"));
+  renderCalendarAgenda();
+  applyCalendarDisplayMode();
 }
 $("#prevMonth").onclick=()=>{calDate=new Date(calDate.getFullYear(),calDate.getMonth()-1,1);renderCalendar()};
 $("#nextMonth").onclick=()=>{calDate=new Date(calDate.getFullYear(),calDate.getMonth()+1,1);renderCalendar()};
@@ -2369,6 +2410,7 @@ function renderFines(){
     <td>${fineStatusBadge(f.status,f.dueDate)}</td>
     <td class="fine-actions">
       <button class="action-link" data-edit-fine="${f.id}">Bearbeiten</button>
+      <button class="action-link" data-manage-links="fine" data-link-id="${f.id}">Verknüpfen</button>
       ${f.status!=="paid"?`<button class="action-link" data-pay-fine="${f.id}">Bezahlt</button>`:""}
       ${f.status!=="waived"?`<button class="action-link" data-waive-fine="${f.id}">Erlassen</button>`:""}
       ${f.status!=="open"?`<button class="action-link" data-reopen-fine="${f.id}">Wieder öffnen</button>`:""}
@@ -2754,7 +2796,7 @@ function renderGroups(){
 }
 function groupNodeHTML(g,level){ const children=activeRows("groups").filter(x=>x.parentId===g.id); return `<div class="node level-${Math.min(level,3)} ${g.id===selectedGroupId?"active":""}" data-group-node="${g.id}">${level?"↳ ":""}${esc(g.name)} <span class="mini-meta">· ${esc(g.type||"Gruppe")}</span></div>${children.map(c=>groupNodeHTML(c,level+1)).join("")}`; }
 function renderGroupDetail(){
-  const g=byId("groups",selectedGroupId); $("#editGroupBtn").disabled=!g; $("#deleteGroupBtn").disabled=!g; if(!g){$("#groupDetail").innerHTML='<div class="empty">Gruppe auswählen.</div>';$("#groupDetailTitle").textContent="Gruppendetails";return}
+  const g=byId("groups",selectedGroupId); $("#editGroupBtn").disabled=!g; $("#deleteGroupBtn").disabled=!g; if($("#linkGroupBtn"))$("#linkGroupBtn").disabled=!g; if(!g){$("#groupDetail").innerHTML='<div class="empty">Gruppe auswählen.</div>';$("#groupDetailTitle").textContent="Gruppendetails";return}
   $("#groupDetailTitle").textContent=g.name; const direct=directMembersOfGroup(g.id),all=membersOfGroup(g.id,true),activeFns=activeFunctionsForGroup(g.id),formerFns=formerFunctionsForGroup(g.id),children=activeRows("groups").filter(x=>x.parentId===g.id);
   const rule=g.autoRule?.enabled?`Automatisch: ${g.autoRule.status?`Status ${statusLabel(g.autoRule.status)}`:"alle Status"}${g.autoRule.ageMin!==""&&g.autoRule.ageMin!=null?`, ab ${g.autoRule.ageMin} J.`:""}${g.autoRule.ageMax!==""&&g.autoRule.ageMax!=null?`, bis ${g.autoRule.ageMax} J.`:""}`:"Keine automatische Regel";
   $("#groupDetail").innerHTML=`<p>${esc(g.description||"Keine Beschreibung hinterlegt.")}</p><div class="group-stat-grid"><div class="group-stat"><small>Direkte Mitglieder</small><b>${direct.length}</b></div><div class="group-stat"><small>inkl. Untergruppen</small><b>${all.length}</b></div><div class="group-stat"><small>Untergruppen</small><b>${children.length}</b></div><div class="group-stat"><small>Aktive Funktionen</small><b>${activeFns.length}</b></div></div>
@@ -2766,7 +2808,7 @@ function renderGroupDetail(){
   $$('[data-edit-function]').forEach(el=>el.onclick=()=>openFunctionModal(byId("functions",el.dataset.editFunction)));
   $$('[data-delete-function]').forEach(el=>el.onclick=()=>{if(confirm("Funktion löschen?")){markDeleted("functions",el.dataset.deleteFunction);saveLocal()}});
 }
-function functionRowHTML(f){ const m=byId("members",f.memberId); return `<div class="function-row"><div><b>${esc(f.title)}</b><div class="mini-meta">${esc(f.kind||"Funktion")}</div></div><div>${esc(m?memberFullName(m):"Nicht besetzt")}</div><div>${fmtDate(f.startDate)} – ${f.endDate?fmtDate(f.endDate):"offen"}</div><div><button class="action-link" data-edit-function="${f.id}">Bearbeiten</button> <button class="action-link" data-delete-function="${f.id}">Löschen</button></div></div>`; }
+function functionRowHTML(f){ const m=byId("members",f.memberId); return `<div class="function-row"><div><b>${esc(f.title)}</b><div class="mini-meta">${esc(f.kind||"Funktion")}</div></div><div>${esc(m?memberFullName(m):"Nicht besetzt")}</div><div>${fmtDate(f.startDate)} – ${f.endDate?fmtDate(f.endDate):"offen"}</div><div><button class="action-link" data-edit-function="${f.id}">Bearbeiten</button> <button class="action-link" data-manage-links="function" data-link-id="${f.id}">Verknüpfen</button> <button class="action-link" data-delete-function="${f.id}">Löschen</button></div></div>`; }
 $("#editGroupBtn").onclick=()=>{const g=byId("groups",selectedGroupId);if(g)openGroupModal(g)};
 $("#deleteGroupBtn").onclick=()=>deleteSelectedGroup();
 $("#newFunctionBtn").onclick=()=>openFunctionModal(null,selectedGroupId);
@@ -2800,6 +2842,76 @@ function folderChain(area,folderId){
   return chain;
 }
 function areaDocs(area){ return activeRows("documents").filter(d=>(d.area||"documents")===area); }
+function knowledgeLinkedDocumentIds(entry){
+  return [...new Set((entry?.documentIds||[]).map(String).filter(Boolean))];
+}
+function knowledgeLinkedDocuments(entry){
+  const wanted=new Set(knowledgeLinkedDocumentIds(entry));
+  return areaDocs("documents")
+    .filter(d=>wanted.has(String(d.id)))
+    .sort((a,b)=>String(a.name||"").localeCompare(String(b.name||""),"de",{sensitivity:"base"}));
+}
+function knowledgeEntriesForDocument(documentId){
+  return activeRows("knowledge").filter(k=>knowledgeLinkedDocumentIds(k).includes(String(documentId)));
+}
+function documentFolderPathText(d){
+  if((d?.area||"documents")==="tasks"){
+    const task=recordById("tasks",d.taskId);
+    return task?`Aufgaben › ${task.title}`:"Aufgaben";
+  }
+  const area=(d?.area||"documents");
+  if(area!=="documents"){
+    const chain=folderChain(area,d?.folderId||"");
+    return chain.length?`${AREA_META[area]?.label||area} › ${chain.map(f=>f.name).join(" › ")}`:(AREA_META[area]?.label||area);
+  }
+  const chain=folderChain("documents",d?.folderId||"");
+  return chain.length?chain.map(f=>f.name).join(" › "):AREA_META.documents.label;
+}
+function detachDocumentFromKnowledge(documentId){
+  activeRows("knowledge").forEach(k=>{
+    const ids=knowledgeLinkedDocumentIds(k);
+    if(!ids.includes(String(documentId)))return;
+    k.documentIds=ids.filter(id=>id!==String(documentId));
+    touch(k);
+  });
+}
+function knowledgeDocumentPickerRows(selectedIds=[]){
+  const selected=new Set((selectedIds||[]).map(String));
+  const rows=areaDocs("documents").slice().sort((a,b)=>
+    documentFolderPathText(a).localeCompare(documentFolderPathText(b),"de",{sensitivity:"base"})||
+    String(a.name||"").localeCompare(String(b.name||""),"de",{sensitivity:"base"})
+  );
+  if(!rows.length)return `<div class="knowledge-document-empty">Noch keine Dateien unter „Dokumente & Bilder“ vorhanden.</div>`;
+  return rows.map(d=>`<label class="knowledge-document-choice" data-knowledge-document-choice data-search="${esc(`${d.name} ${documentFolderPathText(d)} ${fileTypeLabel(d)}`.toLowerCase())}">
+    <input type="checkbox" value="${d.id}" ${selected.has(String(d.id))?"checked":""}>
+    <span class="knowledge-document-choice-icon">📄</span>
+    <span class="knowledge-document-choice-copy">
+      <b>${esc(d.name)}</b>
+      <small>${esc(documentFolderPathText(d))} · ${esc(fileTypeLabel(d))} · ${fmtSize(d.size||0)}</small>
+    </span>
+  </label>`).join("");
+}
+function knowledgeLinkedDocumentsHTML(entry){
+  const docs=knowledgeLinkedDocuments(entry);
+  if(!docs.length)return "";
+  return `<div class="knowledge-linked-documents">
+    <div class="knowledge-linked-documents-head"><b>Zugehörige Dokumente</b><span>${docs.length}</span></div>
+    <div class="knowledge-linked-document-list">
+      ${docs.map(d=>`<div class="knowledge-linked-document">
+        <span class="knowledge-linked-document-icon">📄</span>
+        <div class="knowledge-linked-document-copy">
+          <b>${esc(d.name)}</b>
+          <small>${esc(documentFolderPathText(d))} · ${fmtSize(d.size||0)}</small>
+        </div>
+        <div class="knowledge-linked-document-actions">
+          ${d.webViewLink?`<a class="action-link" href="${esc(d.webViewLink)}" target="_blank" rel="noopener">Öffnen</a>`:""}
+          <button class="action-link" type="button" data-export-file="${d.id}">Exportieren</button>
+        </div>
+      </div>`).join("")}
+    </div>
+  </div>`;
+}
+
 function directAreaFiles(area,folderId=currentFolderId(area)){ return areaDocs(area).filter(d=>(d.folderId||"")===(folderId||"")); }
 function directAreaEntries(area,folderId=currentFolderId(area)){
   if(area==="meetings")return activeRows("meetings").filter(r=>(r.folderId||"")===(folderId||""));
@@ -2807,13 +2919,54 @@ function directAreaEntries(area,folderId=currentFolderId(area)){
   return [];
 }
 function folderDirectCount(area,folderId){ return directAreaFiles(area,folderId).length+directAreaEntries(area,folderId).length; }
+function descendantFolderIds(area,folderId){
+  const result=[],seen=new Set();
+  const walk=parentId=>{
+    folderChildren(area,parentId).forEach(f=>{
+      if(seen.has(f.id))return;
+      seen.add(f.id);
+      result.push(f.id);
+      walk(f.id);
+    });
+  };
+  walk(folderId);
+  return result;
+}
+function folderTreeStats(area,folderId){
+  const descendantIds=descendantFolderIds(area,folderId),
+        allIds=[folderId,...descendantIds],
+        idSet=new Set(allIds),
+        files=areaDocs(area).filter(d=>idSet.has(d.folderId||"")),
+        meetings=area==="meetings"?activeRows("meetings").filter(r=>idSet.has(r.folderId||"")):[],
+        knowledge=area==="knowledge"?activeRows("knowledge").filter(r=>idSet.has(r.folderId||"")):[];
+  return {
+    descendantIds,
+    allIds,
+    files,
+    meetings,
+    knowledge,
+    subfolders:descendantIds.length,
+    entries:meetings.length+knowledge.length
+  };
+}
+
 function folderNodeHTML(area,f,level=0){
-  const children=folderChildren(area,f.id),selected=currentFolderId(area)===f.id;
-  return `<div class="folder-node-wrap">
-    <button class="folder-node ${selected?"active":""}" type="button" data-folder-select="${f.id}" data-folder-area="${area}" style="--folder-level:${Math.min(level,8)}">
-      <span class="folder-icon">📁</span><span class="folder-node-name">${esc(f.name)}</span><span class="folder-count">${folderDirectCount(area,f.id)}</span>
-    </button>
-    ${children.map(c=>folderNodeHTML(area,c,level+1)).join("")}
+  const children=folderChildren(area,f.id),
+        selected=currentFolderId(area)===f.id,
+        hasChildren=children.length>0,
+        collapsed=hasChildren&&folderIsCollapsed(area,f.id);
+  return `<div class="folder-node-wrap ${collapsed?"collapsed":""}" data-folder-wrap="${f.id}">
+    <div class="folder-node-line ${selected?"active":""}" style="--folder-level:${Math.min(level,8)}">
+      ${hasChildren
+        ?`<button class="folder-expander" type="button" data-folder-toggle="${f.id}" data-folder-area="${area}" aria-label="${collapsed?"Unterordner einblenden":"Unterordner ausblenden"}" aria-expanded="${collapsed?"false":"true"}"><span>${collapsed?"›":"⌄"}</span></button>`
+        :`<span class="folder-expander-placeholder" aria-hidden="true"></span>`}
+      <button class="folder-node folder-node-main" type="button" data-folder-select="${f.id}" data-folder-area="${area}">
+        <span class="folder-icon">${collapsed?"📁":"📂"}</span>
+        <span class="folder-node-name">${esc(f.name)}</span>
+        <span class="folder-count">${folderDirectCount(area,f.id)}</span>
+      </button>
+    </div>
+    ${hasChildren?`<div class="folder-node-children" ${collapsed?"hidden":""}>${children.map(c=>folderNodeHTML(area,c,level+1)).join("")}</div>`:""}
   </div>`;
 }
 function renderFolderBrowser(area){
@@ -2822,8 +2975,20 @@ function renderFolderBrowser(area){
   tree.innerHTML=`<button class="folder-node folder-root ${selected===""?"active":""}" type="button" data-folder-select="" data-folder-area="${area}" style="--folder-level:0"><span class="folder-icon">🗂️</span><span class="folder-node-name">Hauptordner</span><span class="folder-count">${folderDirectCount(area,"")}</span></button>${folderChildren(area,"").map(f=>folderNodeHTML(area,f,1)).join("")||'<div class="folder-empty">Noch keine Unterordner.</div>'}`;
   const chain=folderChain(area,selected);
   path.innerHTML=`<button type="button" class="breadcrumb-link" data-folder-crumb="" data-folder-area="${area}">${esc(AREA_META[area].label)}</button>${chain.map(f=>`<span>›</span><button type="button" class="breadcrumb-link" data-folder-crumb="${f.id}" data-folder-area="${area}">${esc(f.name)}</button>`).join("")}`;
-  $$(`[data-folder-select][data-folder-area="${area}"]`).forEach(btn=>btn.onclick=()=>{selectedFolderByArea[area]=btn.dataset.folderSelect||"";renderArea(area)});
-  $$(`[data-folder-crumb][data-folder-area="${area}"]`).forEach(btn=>btn.onclick=()=>{selectedFolderByArea[area]=btn.dataset.folderCrumb||"";renderArea(area)});
+  $$(`[data-folder-toggle][data-folder-area="${area}"]`).forEach(btn=>btn.onclick=e=>{
+    e.stopPropagation();
+    toggleFolderCollapsed(area,btn.dataset.folderToggle||"");
+  });
+  $$(`[data-folder-select][data-folder-area="${area}"]`).forEach(btn=>btn.onclick=()=>{
+    selectedFolderByArea[area]=btn.dataset.folderSelect||"";
+    ensureFolderAncestorsExpanded(area,selectedFolderByArea[area]);
+    renderArea(area);
+  });
+  $$(`[data-folder-crumb][data-folder-area="${area}"]`).forEach(btn=>btn.onclick=()=>{
+    selectedFolderByArea[area]=btn.dataset.folderCrumb||"";
+    ensureFolderAncestorsExpanded(area,selectedFolderByArea[area]);
+    renderArea(area);
+  });
   $$(`[data-export-folder="${area}"]`).forEach(btn=>{
     btn.disabled=false;
     btn.textContent=selected?"Ordner exportieren":"Bereich exportieren";
@@ -2837,21 +3002,25 @@ function fileTypeLabel(d){
   const ext=name.includes(".")?name.split(".").pop().toUpperCase():"";
   return ext||"Datei";
 }
-function fileTableRows(area,categoryMode=false){
-  const rows=directAreaFiles(area);
+function fileTableRows(area,categoryMode=false,rowsOverride=null){
+  const rows=Array.isArray(rowsOverride)?rowsOverride:directAreaFiles(area);
   if(!rows.length)return `<tr><td colspan="5" class="empty">In diesem Ordner liegen noch keine Dateien.</td></tr>`;
-  return rows.slice().sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||""))).map(d=>`<tr>
-    <td><b>${esc(d.name)}</b></td>
-    <td>${categoryMode?esc(d.category||"Dokumente"):esc(fileTypeLabel(d))}</td>
-    <td>${fmtSize(d.size||0)}</td>
-    <td>${d.createdAt?new Date(d.createdAt).toLocaleString("de-DE"):"—"}</td>
-    <td class="doc-actions">
-      ${d.webViewLink?`<a class="action-link" href="${esc(d.webViewLink)}" target="_blank" rel="noopener">Öffnen</a>`:""}
-      <button class="action-link" type="button" data-export-file="${d.id}">Exportieren</button>
-      <button class="action-link" type="button" data-move-file="${d.id}">Verschieben</button>
-      <button class="action-link danger-text" type="button" data-delete-file="${d.id}">Löschen</button>
-    </td>
-  </tr>`).join("");
+  return rows.slice().sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||""))).map(d=>{
+    const knowledgeLinks=area==="documents"?knowledgeEntriesForDocument(d.id).length:0;
+    return `<tr>
+      <td><b>${esc(d.name)}</b>${knowledgeLinks?`<small class="document-knowledge-link-count">↗ ${knowledgeLinks}× im Vereinswissen verknüpft</small>`:""}</td>
+      <td>${categoryMode?esc(d.category||"Dokumente"):esc(fileTypeLabel(d))}</td>
+      <td>${fmtSize(d.size||0)}</td>
+      <td>${d.createdAt?new Date(d.createdAt).toLocaleString("de-DE"):"—"}</td>
+      <td class="doc-actions">
+        ${d.webViewLink?`<a class="action-link" href="${esc(d.webViewLink)}" target="_blank" rel="noopener">Öffnen</a>`:""}
+        <button class="action-link" type="button" data-export-file="${d.id}">Exportieren</button>
+        <button class="action-link" type="button" data-manage-links="document" data-link-id="${d.id}">Verknüpfen</button>
+        <button class="action-link" type="button" data-move-file="${d.id}">Verschieben</button>
+        <button class="action-link danger-text" type="button" data-delete-file="${d.id}">Löschen</button>
+      </td>
+    </tr>`;
+  }).join("");
 }
 function bindFileActions(scope=document){
   scope.querySelectorAll?.("[data-export-file]")?.forEach(btn=>btn.onclick=()=>exportStoredFile(btn.dataset.exportFile,btn));
@@ -2864,7 +3033,7 @@ function renderMeetings(){
   const rows=activeRows("meetings").filter(m=>(m.folderId||"")===folderId).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
   const files=directAreaFiles("meetings");
   $("#meetingFolderCount").textContent=`${rows.length} Sitzung${rows.length===1?"":"en"} · ${files.length} Datei${files.length===1?"":"en"}`;
-  $("#meetingGrid").innerHTML=rows.length?rows.map(m=>`<div class="card meeting-card"><div class="row"><h3>${esc(m.title)}</h3><span class="badge low">${fmtDate(m.date)}</span></div><div class="mini-meta">${esc(groupName(m.groupId))}</div><p>${esc(m.notes||"Keine Notizen.")}</p><div class="mini-meta">${(m.decisions||[]).length} Beschlüsse</div><div style="margin-top:8px"><button class="action-link" data-edit-meeting="${m.id}">Bearbeiten</button> <button class="action-link danger-text" data-delete-meeting="${m.id}">Löschen</button></div></div>`).join(""):`<div class="empty browser-empty">In diesem Ordner sind noch keine Sitzungen oder Beschlüsse abgelegt.</div>`;
+  $("#meetingGrid").innerHTML=rows.length?rows.map(m=>`<div class="card meeting-card"><div class="row"><h3>${esc(m.title)}</h3><span class="badge low">${fmtDate(m.date)}</span></div><div class="mini-meta">${esc(groupName(m.groupId))}</div><p>${esc(m.notes||"Keine Notizen.")}</p><div class="mini-meta">${(m.decisions||[]).length} Beschlüsse</div><div style="margin-top:8px"><button class="action-link" data-edit-meeting="${m.id}">Bearbeiten</button> <button class="action-link" data-manage-links="meeting" data-link-id="${m.id}">Verknüpfen</button> <button class="action-link danger-text" data-delete-meeting="${m.id}">Löschen</button></div></div>`).join(""):`<div class="empty browser-empty">In diesem Ordner sind noch keine Sitzungen oder Beschlüsse abgelegt.</div>`;
   $("#meetingFileTable").innerHTML=fileTableRows("meetings",false);
   $$('[data-edit-meeting]').forEach(el=>el.onclick=()=>openMeetingModal(byId("meetings",el.dataset.editMeeting)));
   $$('[data-delete-meeting]').forEach(el=>el.onclick=()=>{if(confirm("Sitzung wirklich löschen?")){markDeleted("meetings",el.dataset.deleteMeeting);saveLocal()}});
@@ -2872,18 +3041,41 @@ function renderMeetings(){
 }
 function renderDocuments(){
   renderFolderBrowser("documents");
-  const all=areaDocs("documents"),cats=["Protokolle","Dokumente","Bilder"];
-  $("#docCategories").innerHTML=cats.map(c=>{const r=all.filter(d=>d.category===c);return `<div class="card doc-category"><span>${c}</span><b>${r.length}</b><small class="muted">${fmtSize(r.reduce((s,d)=>s+(d.size||0),0))}</small></div>`}).join("");
-  $("#docTable").innerHTML=fileTableRows("documents",true);
+  const folderId=currentFolderId("documents"),
+        q=($("#documentSearch")?.value||"").trim().toLowerCase(),
+        allRowsInFolder=directAreaFiles("documents",folderId),
+        rows=allRowsInFolder.filter(d=>!q||`${d.name} ${fileTypeLabel(d)} ${documentFolderPathText(d)}`.toLowerCase().includes(q));
+  const count=$("#documentFolderCount");
+  if(count)count.textContent=`${allRowsInFolder.length} Datei${allRowsInFolder.length===1?"":"en"}`;
+  $("#docTable").innerHTML=fileTableRows("documents",false,rows);
   bindFileActions($("#view-documents"));
 }
 function renderKnowledge(){
   renderFolderBrowser("knowledge");
   const folderId=currentFolderId("knowledge"),q=($("#knowledgeSearch").value||"").toLowerCase();
-  const rows=activeRows("knowledge").filter(k=>(k.folderId||"")===folderId).filter(k=>!q||`${k.title} ${k.text}`.toLowerCase().includes(q));
+  const rows=activeRows("knowledge").filter(k=>(k.folderId||"")===folderId).filter(k=>{
+    if(!q)return true;
+    const linkedNames=knowledgeLinkedDocuments(k).map(d=>`${d.name} ${documentFolderPathText(d)}`).join(" ");
+    return `${k.title} ${k.text} ${linkedNames}`.toLowerCase().includes(q);
+  });
   const files=directAreaFiles("knowledge");
   $("#knowledgeFolderCount").textContent=`${rows.length} Eintrag${rows.length===1?"":"e"} · ${files.length} Datei${files.length===1?"":"en"}`;
-  $("#knowledgeGrid").innerHTML=rows.length?rows.map(k=>`<div class="card knowledge-card"><h3>${esc(k.title)}</h3><p>${esc(k.text||"")}</p><div class="mini-meta">${esc(groupName(k.groupId))}</div><div style="margin-top:8px"><button class="action-link" data-edit-knowledge="${k.id}">Bearbeiten</button> <button class="action-link danger-text" data-delete-knowledge="${k.id}">Löschen</button></div></div>`).join(""):`<div class="empty browser-empty">In diesem Ordner ist noch kein Vereinswissen hinterlegt.</div>`;
+  $("#knowledgeGrid").innerHTML=rows.length?rows.map(k=>{
+    const linked=knowledgeLinkedDocuments(k);
+    return `<div class="card knowledge-card">
+      <div class="knowledge-card-head">
+        <div><h3>${esc(k.title)}</h3><div class="mini-meta">${esc(groupName(k.groupId))}</div></div>
+        ${linked.length?`<span class="knowledge-link-badge">📎 ${linked.length}</span>`:""}
+      </div>
+      <p>${esc(k.text||"")}</p>
+      ${knowledgeLinkedDocumentsHTML(k)}
+      <div class="knowledge-card-actions">
+        <button class="action-link" data-edit-knowledge="${k.id}">Bearbeiten</button>
+        <button class="action-link" data-manage-links="knowledge" data-link-id="${k.id}">Verknüpfen</button>
+        <button class="action-link danger-text" data-delete-knowledge="${k.id}">Löschen</button>
+      </div>
+    </div>`;
+  }).join(""):`<div class="empty browser-empty">In diesem Ordner ist noch kein Vereinswissen hinterlegt.</div>`;
   $("#knowledgeFileTable").innerHTML=fileTableRows("knowledge",false);
   $$('[data-edit-knowledge]').forEach(el=>el.onclick=()=>openKnowledgeModal(byId("knowledge",el.dataset.editKnowledge)));
   $$('[data-delete-knowledge]').forEach(el=>el.onclick=()=>{if(confirm("Wissenseintrag wirklich löschen?")){markDeleted("knowledge",el.dataset.deleteKnowledge);saveLocal()}});
@@ -2894,6 +3086,7 @@ function renderArea(area){
   else if(area==="documents")renderDocuments();
   else if(area==="knowledge")renderKnowledge();
 }
+$("#documentSearch")?.addEventListener("input",renderDocuments);
 $("#knowledgeSearch").addEventListener("input",renderKnowledge);
 
 function openFolderModal(area){
@@ -2917,21 +3110,78 @@ function openRenameFolderModal(area){
   });
 }
 async function deleteCurrentFolder(area){
-  const f=currentFolder(area);if(!f)return;
-  const children=folderChildren(area,f.id),files=directAreaFiles(area,f.id),entries=directAreaEntries(area,f.id);
-  if(children.length||files.length||entries.length){
-    alert("Dieser Ordner ist nicht leer. Bitte verschiebe oder lösche zuerst die enthaltenen Unterordner, Einträge und Dateien.");
-    return;
-  }
-  if(!confirm(`Ordner „${f.name}“ wirklich löschen?\n\nEin bereits angelegter Google-Drive-Ordner wird in den Drive-Papierkorb verschoben.`))return;
+  const f=currentFolder(area);
+  if(!f)return;
+
+  const stats=folderTreeStats(area,f.id),
+        parent=f.parentId||"",
+        parts=[
+          `${stats.subfolders} Unterordner`,
+          `${stats.files.length} Datei${stats.files.length===1?"":"en"}`,
+          stats.entries?`${stats.entries} V-Planer-Eintrag${stats.entries===1?"":"e"}`:""
+        ].filter(Boolean);
+
+  const message=
+    `Ordner „${f.name}“ wirklich löschen?\n\n`+
+    `Der komplette Ordnerbaum wird gelöscht${parts.length?`:\n• ${parts.join("\n• ")}`:"."}\n\n`+
+    `Dateien und bereits angelegte Drive-Ordner werden in den Google-Drive-Papierkorb verschoben. `+
+    `Sitzungs-/Beschluss- und Vereinswissenseinträge in diesem Ordnerbaum werden ebenfalls aus V-Planer gelöscht.`;
+
+  if(!confirm(message))return;
+
+  const trashBatchId=`folder-${f.id}-${Date.now()}`;
   try{
-    if(f.driveFolderId){
-      if(!hasUsableAccessToken())await ensureDriveAccess();
-      await driveFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(f.driveFolderId)}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({trashed:true})});
+    if((stats.files.length||stats.allIds.some(id=>byId("folders",id)?.driveFolderId))&&!hasUsableAccessToken()){
+      await ensureDriveAccess();
     }
-    const parent=f.parentId||"";
-    markDeleted("folders",f.id);selectedFolderByArea[area]=parent;saveLocal();
-  }catch(e){alert(e.message)}
+
+    // Dateien zuerst in Drive in den Papierkorb verschieben. Dadurch bleiben
+    // keine verwaisten Dateiverweise zurück, auch wenn einzelne Unterordner
+    // noch keine eigene Drive-Struktur besitzen.
+    for(const d of stats.files){
+      try{
+        await driveFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(d.id)}?fields=id,trashed`,{
+          method:"PATCH",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({trashed:true})
+        });
+      }catch(e){
+        console.warn("Datei konnte beim Ordnerlöschen nicht in den Drive-Papierkorb verschoben werden:",d.name,e);
+      }
+      markDeleted("documents",d.id,{trashBatchId,trashRootType:"folder",trashRootId:f.id});
+    }
+
+    stats.meetings.forEach(r=>markDeleted("meetings",r.id,{trashBatchId,trashRootType:"folder",trashRootId:f.id}));
+    stats.knowledge.forEach(r=>markDeleted("knowledge",r.id,{trashBatchId,trashRootType:"folder",trashRootId:f.id}));
+
+    // Unterordner zuerst, Elternordner zuletzt. So funktioniert es auch,
+    // wenn einzelne logische Unterordner separat mit Drive verknüpft wurden.
+    const foldersToDelete=stats.allIds
+      .map(id=>byId("folders",id))
+      .filter(Boolean)
+      .sort((a,b)=>folderChain(area,b.id).length-folderChain(area,a.id).length);
+
+    for(const folder of foldersToDelete){
+      if(folder.driveFolderId){
+        try{
+          await driveFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(folder.driveFolderId)}?fields=id,trashed`,{
+            method:"PATCH",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({trashed:true})
+          });
+        }catch(e){
+          console.warn("Drive-Ordner konnte nicht in den Papierkorb verschoben werden:",folder.name,e);
+        }
+      }
+      markDeleted("folders",folder.id,{trashBatchId,trashRootType:"folder",trashRootId:f.id});
+      collapsedFoldersByArea[area]?.delete(folder.id);
+    }
+
+    selectedFolderByArea[area]=parent;
+    saveLocal();
+  }catch(e){
+    alert(`Ordner konnte nicht vollständig gelöscht werden:\n${e.message}`);
+  }
 }
 $$("[data-new-folder]").forEach(btn=>btn.onclick=()=>openFolderModal(btn.dataset.newFolder));
 $$("[data-rename-folder]").forEach(btn=>btn.onclick=()=>openRenameFolderModal(btn.dataset.renameFolder));
@@ -3018,11 +3268,17 @@ function textExportForEntry(area,entry){
     ].join("\n");
   }
   if(area==="knowledge"){
+    const docs=knowledgeLinkedDocuments(entry);
     return [
       `Vereinswissen: ${entry.title||""}`,
       `Gruppe: ${groupName(entry.groupId)}`,
       "",
-      entry.text||""
+      entry.text||"",
+      ...(docs.length?[
+        "",
+        "Zugehörige Dokumente",
+        ...docs.map((d,i)=>`${i+1}. ${d.name} (${documentFolderPathText(d)})`)
+      ]:[])
     ].join("\n");
   }
   return "";
@@ -3180,7 +3436,8 @@ async function deleteStoredFile(fileId){
   try{
     if(!hasUsableAccessToken())await ensureDriveAccess();
     await driveFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(d.id)}?fields=id,trashed`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({trashed:true})});
-    markDeleted("documents",d.id);saveLocal();
+    markDeleted("documents",d.id);
+    saveLocal();
   }catch(e){alert(e.message)}
 }
 
@@ -3274,10 +3531,100 @@ function parseJubileeYearsInput(value){
       .filter(n=>Number.isInteger(n)&&n>0&&n<=150)
   )].sort((a,b)=>a-b);
 }
+let clubLogoDraft=undefined;
+
+function activeClubFunctions(){
+  const today=todayStr();
+  return activeRows("functions")
+    .filter(f=>!f.endDate||f.endDate>=today)
+    .slice()
+    .sort((a,b)=>String(a.title||"").localeCompare(String(b.title||""),"de",{sensitivity:"base"}));
+}
+function clubFunctionLabel(f){
+  if(!f)return "Nicht zugeordnet";
+  const member=byId("members",f.memberId),
+        person=member?memberFullName(member):"nicht besetzt",
+        group=f.groupId?groupName(f.groupId):"Gesamtverein";
+  return `${f.title||"Funktion"} · ${person} · ${group}`;
+}
+function clubFunctionOptions(selected=""){
+  const active=activeClubFunctions();
+  const current=selected?recordById("functions",selected):null;
+  let rows=active;
+  if(current&&!active.some(f=>f.id===current.id))rows=[current,...active];
+  let html='<option value="">Nicht zugeordnet</option>';
+  if(selected&&!current)html+=`<option value="${esc(selected)}" selected>Nicht mehr vorhandene Funktion</option>`;
+  html+=rows.map(f=>`<option value="${f.id}" ${f.id===selected?"selected":""}>${esc(clubFunctionLabel(f))}${current?.id===f.id&&!active.some(x=>x.id===f.id)?" · nicht mehr aktiv":""}</option>`).join("");
+  return html;
+}
+function renderClubLogoPreview(value){
+  const el=$("#clubLogoPreview");
+  if(!el)return;
+  const logo=value||"";
+  el.innerHTML=logo
+    ?`<img src="${logo}" alt="Vereinslogo">`
+    :`<div class="club-logo-placeholder"><span>🏛️</span><small>Vereinslogo</small></div>`;
+  $("#clubLogoRemoveBtn")?.classList.toggle("hidden",!logo);
+}
+function readClubLogoFile(input,current=""){
+  const f=input?.files?.[0];
+  if(!f)return Promise.resolve(current);
+  if(!String(f.type||"").startsWith("image/"))return Promise.reject(new Error("Bitte eine Bilddatei als Vereinslogo auswählen."));
+  return new Promise((resolve,reject)=>{
+    const img=new Image(),fr=new FileReader();
+    fr.onload=()=>{
+      img.onload=()=>{
+        const max=800,scale=Math.min(1,max/Math.max(img.width,img.height)),
+              canvas=document.createElement("canvas");
+        canvas.width=Math.max(1,Math.round(img.width*scale));
+        canvas.height=Math.max(1,Math.round(img.height*scale));
+        const ctx=canvas.getContext("2d");
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        ctx.drawImage(img,0,0,canvas.width,canvas.height);
+        resolve(canvas.toDataURL("image/png"));
+      };
+      img.onerror=()=>reject(new Error("Das Vereinslogo konnte nicht gelesen werden."));
+      img.src=fr.result;
+    };
+    fr.onerror=()=>reject(new Error("Das Vereinslogo konnte nicht gelesen werden."));
+    fr.readAsDataURL(f);
+  });
+}
+function normalizeWebsite(value){
+  const v=String(value||"").trim();
+  if(!v)return "";
+  return /^https?:\/\//i.test(v)?v:`https://${v}`;
+}
+
 function renderSettings(){
-  const s=db.settings,r=s.reminders;
+  const s=db.settings,r=s.reminders,c=s.clubData||defaultDB().settings.clubData;
   $("#clubName").value=s.clubName||"";
+  $("#clubShortName").value=c.shortName||"";
+  $("#clubFoundedDate").value=c.foundedDate||"";
+  $("#clubLegalForm").value=c.legalForm||"";
+  $("#clubStreet").value=c.address?.street||"";
+  $("#clubZip").value=c.address?.zip||"";
+  $("#clubCity").value=c.address?.city||"";
+  $("#clubEmail").value=c.contact?.email||"";
+  $("#clubPhone").value=c.contact?.phone||"";
+  $("#clubWebsite").value=c.contact?.website||"";
+  $("#clubRegisterNo").value=c.registry?.registerNo||"";
+  $("#clubRegisterCourt").value=c.registry?.registerCourt||"";
+  $("#clubTaxNo").value=c.registry?.taxNo||"";
+  $("#clubTaxOffice").value=c.registry?.taxOffice||"";
+  $("#clubFiscalStart").value=c.fiscalYearStart||"01.01.";
+  $("#clubFiscalEnd").value=c.fiscalYearEnd||"31.12.";
+  $("#clubVenueName").value=c.venue?.name||"";
+  $("#clubVenueStreet").value=c.venue?.street||"";
+  $("#clubVenueZip").value=c.venue?.zip||"";
+  $("#clubVenueCity").value=c.venue?.city||"";
+  $("#clubChairFunction").innerHTML=clubFunctionOptions(c.responsibleFunctions?.chairFunctionId||"");
+  $("#clubSecretaryFunction").innerHTML=clubFunctionOptions(c.responsibleFunctions?.secretaryFunctionId||"");
+  $("#clubTreasurerFunction").innerHTML=clubFunctionOptions(c.responsibleFunctions?.treasurerFunctionId||"");
+  $("#clubDescription").value=c.description||"";
+  $("#clubInternalNotes").value=c.internalNotes||"";
   $("#userRole").value=s.userRole||"";
+  renderClubLogoPreview(clubLogoDraft===undefined?(c.logoData||""):clubLogoDraft);
   $("#uiScale").value=s.uiScale||100;
   $("#uiScaleLabel").textContent=`${s.uiScale||100}%`;
   $("#moduleClub").checked=s.modules.club;
@@ -3306,6 +3653,21 @@ $("#uiScale").addEventListener("input",()=>{
   $("#uiScaleLabel").textContent=`${$("#uiScale").value}%`;
   applyUiScale($("#uiScale").value);
 });
+$("#clubLogoInput")?.addEventListener("change",async()=>{
+  try{
+    const current=clubLogoDraft===undefined?(db.settings.clubData?.logoData||""):clubLogoDraft;
+    clubLogoDraft=await readClubLogoFile($("#clubLogoInput"),current);
+    renderClubLogoPreview(clubLogoDraft);
+  }catch(e){
+    $("#clubLogoInput").value="";
+    alert(e.message);
+  }
+});
+$("#clubLogoRemoveBtn")?.addEventListener("click",()=>{
+  clubLogoDraft="";
+  $("#clubLogoInput").value="";
+  renderClubLogoPreview("");
+});
 
 $("#addGroupTypeBtn").onclick=()=>{
   const list=$("#groupTypeList");
@@ -3325,6 +3687,47 @@ $("#saveSettingsBtn").onclick=()=>{
   }
   db.settings.clubName=$("#clubName").value.trim();
   db.settings.userRole=$("#userRole").value.trim();
+
+  const oldClub=db.settings.clubData||defaultDB().settings.clubData;
+  db.settings.clubData={
+    ...oldClub,
+    shortName:$("#clubShortName").value.trim(),
+    logoData:clubLogoDraft===undefined?(oldClub.logoData||""):clubLogoDraft,
+    foundedDate:$("#clubFoundedDate").value,
+    legalForm:$("#clubLegalForm").value.trim(),
+    address:{
+      street:$("#clubStreet").value.trim(),
+      zip:$("#clubZip").value.trim(),
+      city:$("#clubCity").value.trim()
+    },
+    contact:{
+      email:$("#clubEmail").value.trim(),
+      phone:$("#clubPhone").value.trim(),
+      website:normalizeWebsite($("#clubWebsite").value)
+    },
+    registry:{
+      registerNo:$("#clubRegisterNo").value.trim(),
+      registerCourt:$("#clubRegisterCourt").value.trim(),
+      taxNo:$("#clubTaxNo").value.trim(),
+      taxOffice:$("#clubTaxOffice").value.trim()
+    },
+    fiscalYearStart:$("#clubFiscalStart").value.trim()||"01.01.",
+    fiscalYearEnd:$("#clubFiscalEnd").value.trim()||"31.12.",
+    venue:{
+      name:$("#clubVenueName").value.trim(),
+      street:$("#clubVenueStreet").value.trim(),
+      zip:$("#clubVenueZip").value.trim(),
+      city:$("#clubVenueCity").value.trim()
+    },
+    responsibleFunctions:{
+      chairFunctionId:$("#clubChairFunction").value,
+      secretaryFunctionId:$("#clubSecretaryFunction").value,
+      treasurerFunctionId:$("#clubTreasurerFunction").value
+    },
+    description:$("#clubDescription").value.trim(),
+    internalNotes:$("#clubInternalNotes").value.trim()
+  };
+
   db.settings.uiScale=Math.min(125,Math.max(80,Number($("#uiScale").value)||100));
   applyUiScale(db.settings.uiScale);
   db.settings.modules.club=$("#moduleClub").checked;
@@ -3354,6 +3757,7 @@ $("#saveSettingsBtn").onclick=()=>{
   db.settings.compressImages=$("#compressImages").checked;
   db.settings.honoraryContributionFree=$("#honoraryContributionFree").checked;
   db.settingsUpdatedAt=now();
+  clubLogoDraft=undefined;
   saveLocal();
   applyModuleVisibility();
   alert("Einstellungen gespeichert.");
@@ -3398,7 +3802,7 @@ $("#resetUiScaleBtn").onclick=()=>{
 
 
 
-function renderAll(){ applyModuleVisibility(); renderDashboard();renderTasks();renderProjects();renderKanban();renderCalendar();renderYear();renderArchive();renderFines();renderMembers();renderGroups();renderMeetings();renderDocuments();renderKnowledge();renderStorage();renderSettings(); }
+function renderAll(){ applyModuleVisibility(); renderDashboard();renderTasks();renderProjects();renderKanban();renderCalendar();renderYear();renderArchive();renderFines();renderMembers();renderGroups();renderMeetings();renderDocuments();renderKnowledge();renderTrash();renderStorage();renderSettings();requestAnimationFrame(decorateLinkButtons); }
 
 function groupOptions(selected="",excludeId=""){return `<option value="">Gesamtverein / keine Gruppe</option>${activeRows("groups").filter(g=>g.id!==excludeId).map(g=>`<option value="${g.id}" ${g.id===selected?"selected":""}>${esc(g.name)}</option>`).join("")}`}
 function projectOptions(selected=""){return `<option value="">Kein Projekt</option>${activeRows("projects").map(p=>`<option value="${p.id}" ${p.id===selected?"selected":""}>${esc(p.name)}</option>`).join("")}`}
@@ -3658,6 +4062,7 @@ function showEventDetails(e){
     </div>
     <div class="event-detail-color"><span style="background:${color}"></span><b>Terminfarbe</b><code>${esc(color.toUpperCase())}</code></div>
     <div class="event-detail-actions">
+      <button class="btn secondary" type="button" data-manage-links="event" data-link-id="${e.id}">Verknüpfte Inhalte</button>
       <button class="btn primary" type="button" id="detailEditEvent">Bearbeiten</button>
       <button class="btn danger" type="button" id="detailDeleteEvent">Termin löschen</button>
     </div>
@@ -3682,9 +4087,8 @@ function showEventDetails(e){
 
   $("#detailDeleteEvent").onclick=()=>{
     const linked=linkedProjectForEvent(e);
-    const extra=linked?`\n\nDie Verknüpfung zum Projekt „${linked.name}“ wird gelöst. Das Projekt selbst bleibt erhalten.`:"";
+    const extra=linked?`\n\nDie Verknüpfung zum Projekt „${linked.name}“ bleibt für eine mögliche Wiederherstellung gespeichert.`:"";
     if(!confirm(`Termin „${e.title}“ wirklich löschen?\n\nDer Termin wird aus Kalender und Vereinsjahr entfernt.${extra}`))return;
-    if(linked)detachProjectEvent(linked,e);
     markDeleted("events",e.id);
     dlg.close();
     saveLocal();
@@ -3823,7 +4227,7 @@ function openEventModal(rec=null,presetProjectId="",preset={}){
   });
 }
 function openMemberModal(rec=null){
-  const r=rec||{memberNo:nextAvailableMemberNo(),firstName:"",lastName:"",birthDate:"",status:"active",entryDate:todayStr(),exitDate:"",reentryDate:"",cancelDate:"",deceasedDate:"",honorary:false,email:"",phone:"",address:"",emergencyName:"",emergencyPhone:"",guardian:"",familyName:"",relationships:"",groupIds:[],photoData:"",extraFields:[],history:[],statusHistory:[],honors:[],notes:""};
+  const r=rec||{memberNo:nextAvailableMemberNo(),firstName:"",lastName:"",birthDate:"",status:"active",entryDate:todayStr(),exitDate:"",reentryDate:"",cancelDate:"",deceasedDate:"",honorary:false,email:"",phone:"",address:"",emergencyName:"",emergencyPhone:"",guardian:"",familyName:"",householdId:"",relationships:"",groupIds:[],photoData:"",extraFields:[],history:[],statusHistory:[],honors:[],notes:""};
   const extra=(r.extraFields||[]).map(x=>`${x.key}=${x.value}`).join("\n"), hist=(r.history||[]).map(x=>`${x.date||""}|${x.note||""}`).join("\n"), shist=(r.statusHistory||[]).map(x=>`${x.date||""}|${x.note||x.status||""}`).join("\n"), honors=(r.honors||[]).map(x=>`${x.title||""}|${x.date||""}`).join("\n");
   showModal(rec?"Mitglied bearbeiten":"Neues Mitglied",`<div class="form-grid">
     <div class="form-section">Stammdaten</div>
@@ -3835,7 +4239,7 @@ function openMemberModal(rec=null){
     <label>Eintritt<input id="mEntry" type="date" value="${esc(r.entryDate||"")}"></label><label>Austritt<input id="mExit" type="date" value="${esc(r.exitDate||"")}"></label><label>Wiedereintritt<input id="mReentry" type="date" value="${esc(r.reentryDate||"")}"></label><label>Kündigungsdatum<input id="mCancel" type="date" value="${esc(r.cancelDate||"")}"></label><label>Sterbedatum<input id="mDeceased" type="date" value="${esc(r.deceasedDate||"")}"></label><label>Altersgruppe<input disabled value="wird automatisch berechnet"></label>
     <label class="full">Gruppen<select id="mGroups" multiple size="5">${activeRows("groups").map(g=>`<option value="${g.id}" ${(r.groupIds||[]).includes(g.id)?"selected":""}>${esc(g.name)}</option>`).join("")}</select></label>
     <div class="form-section">Kontakt & Familie</div>
-    <label>E-Mail<input id="mEmail" type="email" value="${esc(r.email||"")}"></label><label>Telefon<input id="mPhone" value="${esc(r.phone||"")}"></label><label class="full">Adresse<textarea id="mAddress" rows="2">${esc(r.address||"")}</textarea></label><label>Notfallkontakt<input id="mEmergencyName" value="${esc(r.emergencyName||"")}"></label><label>Notfall-Telefon<input id="mEmergencyPhone" value="${esc(r.emergencyPhone||"")}"></label><label>Familie / Haushalt<input id="mFamily" value="${esc(r.familyName||"")}"></label><label>Gesetzliche Vertretung<input id="mGuardian" value="${esc(r.guardian||"")}"></label><label class="full">Beziehungen zu Mitgliedern<textarea id="mRelationships" rows="2" placeholder="z. B. Mutter von Anna; Bruder von Max">${esc(r.relationships||"")}</textarea></label>
+    <label>E-Mail<input id="mEmail" type="email" value="${esc(r.email||"")}"></label><label>Telefon<input id="mPhone" value="${esc(r.phone||"")}"></label><label class="full">Adresse<textarea id="mAddress" rows="2">${esc(r.address||"")}</textarea></label><label>Notfallkontakt<input id="mEmergencyName" value="${esc(r.emergencyName||"")}"></label><label>Notfall-Telefon<input id="mEmergencyPhone" value="${esc(r.emergencyPhone||"")}"></label><label>Haushalt<select id="mHousehold">${householdOptions(r.householdId||"")}</select><small class="field-help">Haushalte werden zentral verwaltet und können mehrere Mitglieder enthalten.</small></label><label>Gesetzliche Vertretung (extern/Freitext)<input id="mGuardian" value="${esc(r.guardian||"")}"></label><div class="form-note full">Beziehungen zu anderen V-Planer-Mitgliedern werden nach dem Speichern direkt in der Mitgliedsansicht über „Beziehungen“ verwaltet.${r.relationships?`<br><b>Altbestand:</b> ${esc(r.relationships)}`:""}</div>
     <div class="form-section">Zusatzfelder, Ehrungen & Verlauf</div>
     <label class="full">Frei definierbare Zusatzfelder<textarea id="mExtra" rows="3" placeholder="Trikotgröße=L\nQualifikation=Übungsleiter">${esc(extra)}</textarea></label>
     <label class="full">Ehrungen<textarea id="mHonors" rows="3" placeholder="Ehrennadel Gold|2025-06-01">${esc(honors)}</textarea></label>
@@ -3869,7 +4273,7 @@ function openMemberModal(rec=null){
       groupIds:[...$("#mGroups").selectedOptions].map(o=>o.value),
       email:$("#mEmail").value.trim(),phone:$("#mPhone").value.trim(),address:$("#mAddress").value,
       emergencyName:$("#mEmergencyName").value.trim(),emergencyPhone:$("#mEmergencyPhone").value.trim(),
-      familyName:$("#mFamily").value.trim(),guardian,relationships:$("#mRelationships").value,
+      familyName:r.familyName||"",householdId:$("#mHousehold").value,guardian,relationships:r.relationships||"",
       photoData:photo,extraFields:parseKeyValueLines($("#mExtra").value),
       honors:parseDatedLines($("#mHonors").value),history:parseHistory($("#mHistory").value),
       statusHistory:parseHistory($("#mStatusHistory").value),notes:$("#mNotes").value
@@ -3888,7 +4292,14 @@ function openMemberModal(rec=null){
     return true;
   });
 }
-function showMemberCard(m){ $("#detailTitle").textContent="Digitale Mitgliedskarte";$("#detailBody").innerHTML=`<div style="max-width:520px;margin:auto"><div class="member-card-digital" style="padding:24px"><div class="member-card-top"><div><b>V-Planer · ${esc(db.settings.clubName)}</b><div style="font-size:28px;margin-top:16px">${esc(`${m.firstName||""} ${m.lastName||""}`.trim())}</div><small>${esc(effectiveGroupIdsForMember(m).map(groupName).filter(x=>x!=="—").join(" · ")||"Gesamtverein")}</small></div><div style="text-align:right"><b style="font-size:22px">${esc(memberNo(m))}</b><div style="margin-top:15px">${m.honorary?`★ Ehrenmitglied${honoraryContributionFree(m)?" · beitragsfrei":""}`:""}</div></div></div></div></div>`;$("#detailModal").showModal(); }
+function showMemberCard(m){
+  const c=db.settings.clubData||{},
+        clubLabel=c.shortName||db.settings.clubName||"Verein",
+        logo=c.logoData?`<img class="member-card-club-logo" src="${c.logoData}" alt="${esc(clubLabel)}">`:"";
+  $("#detailTitle").textContent="Digitale Mitgliedskarte";
+  $("#detailBody").innerHTML=`<div style="max-width:520px;margin:auto"><div class="member-card-digital" style="padding:24px"><div class="member-card-top"><div><div class="member-card-club-brand">${logo}<b>${esc(clubLabel)}</b></div><div style="font-size:28px;margin-top:16px">${esc(`${m.firstName||""} ${m.lastName||""}`.trim())}</div><small>${esc(effectiveGroupIdsForMember(m).map(groupName).filter(x=>x!=="—").join(" · ")||"Gesamtverein")}</small></div><div style="text-align:right"><b style="font-size:22px">${esc(memberNo(m))}</b><div style="margin-top:15px">${m.honorary?`★ Ehrenmitglied${honoraryContributionFree(m)?" · beitragsfrei":""}`:""}</div></div></div></div></div>`;
+  $("#detailModal").showModal();
+}
 
 function configuredGroupTypes(currentType=""){
   const configured=(Array.isArray(db.settings.groupTypes)?db.settings.groupTypes:[])
@@ -3958,18 +4369,78 @@ function openMeetingModal(rec=null){
   });
 }
 function openKnowledgeModal(rec=null){
-  const r=rec||{title:"",groupId:"",folderId:currentFolderId("knowledge"),text:""};
-  showModal(rec?"Wissenseintrag bearbeiten":"Neuer Wissenseintrag",`<div class="form-grid">
+  const r=rec||{title:"",groupId:"",folderId:currentFolderId("knowledge"),text:"",documentIds:[]},
+        selectedDocumentIds=knowledgeLinkedDocumentIds(r);
+
+  showModal(rec?"Wissenseintrag bearbeiten":"Neuer Wissenseintrag",`<div class="form-grid knowledge-form">
     <label class="full">Titel<input id="kTitle" value="${esc(r.title)}"></label>
     <label>Bereich<select id="kGroup">${groupOptions(r.groupId)}</select></label>
     <label>Ordner<select id="kFolder">${folderOptions("knowledge",r.folderId||"")}</select></label>
-    <label class="full">Inhalt<textarea id="kText" rows="7">${esc(r.text||"")}</textarea></label>
+    <label class="full">Inhalt<textarea id="kText" rows="8" placeholder="Ablauf, Erfahrungen, Ansprechpartner, Hinweise, Checklisten …">${esc(r.text||"")}</textarea></label>
+
+    <div class="form-section">Zugehörige Dokumente</div>
+    <div class="knowledge-document-picker full">
+      <div class="knowledge-document-picker-head">
+        <div>
+          <b>Dateien aus „Dokumente & Bilder“ verknüpfen</b>
+          <small>Die Originaldatei bleibt einmalig im Dokumentenarchiv gespeichert.</small>
+        </div>
+        <span id="knowledgeDocumentSelectedCount" class="knowledge-selected-count">${selectedDocumentIds.length} ausgewählt</span>
+      </div>
+      <input id="knowledgeDocumentSearch" class="knowledge-document-search" type="search" placeholder="Dokumente durchsuchen …">
+      <div id="knowledgeDocumentChoices" class="knowledge-document-choices">
+        ${knowledgeDocumentPickerRows(selectedDocumentIds)}
+      </div>
+      <div id="knowledgeDocumentNoResult" class="knowledge-document-no-result hidden">Keine passenden Dokumente gefunden.</div>
+    </div>
+
+    <div class="form-note full">Ein Dokument kann mit mehreren Wissenseinträgen verknüpft werden. Eine Verknüpfung zu entfernen löscht die Datei nicht.</div>
   </div>`,()=>{
-    const title=$("#kTitle").value.trim();if(!title)return false;
+    const title=$("#kTitle").value.trim();
+    if(!title)return false;
+
     const target=rec||{id:uid(),createdAt:now()};
-    Object.assign(target,{title,groupId:$("#kGroup").value,folderId:$("#kFolder").value,text:$("#kText").value});
-    touch(target);if(!rec)db.knowledge.push(target);selectedFolderByArea.knowledge=target.folderId||"";saveLocal();return true;
+    const documentIds=$$("#knowledgeDocumentChoices input[type=checkbox]:checked").map(input=>input.value);
+
+    Object.assign(target,{
+      title,
+      groupId:$("#kGroup").value,
+      folderId:$("#kFolder").value,
+      text:$("#kText").value,
+      documentIds:[...new Set(documentIds)]
+    });
+
+    touch(target);
+    if(!rec)db.knowledge.push(target);
+    selectedFolderByArea.knowledge=target.folderId||"";
+    saveLocal();
+    return true;
   });
+
+  const search=$("#knowledgeDocumentSearch"),
+        choices=$("#knowledgeDocumentChoices"),
+        noResult=$("#knowledgeDocumentNoResult"),
+        count=$("#knowledgeDocumentSelectedCount");
+
+  function refreshKnowledgeDocumentPicker(){
+    const query=String(search?.value||"").trim().toLowerCase();
+    let visible=0;
+    const rows=[...(choices?.querySelectorAll("[data-knowledge-document-choice]")||[])];
+    rows.forEach(row=>{
+      const show=!query||String(row.dataset.search||"").includes(query);
+      row.classList.toggle("hidden",!show);
+      if(show)visible++;
+    });
+    if(noResult)noResult.classList.toggle("hidden",visible>0||rows.length===0);
+    if(count){
+      const selected=choices?.querySelectorAll('input[type="checkbox"]:checked').length||0;
+      count.textContent=`${selected} ausgewählt`;
+    }
+  }
+
+  search?.addEventListener("input",refreshKnowledgeDocumentPicker);
+  choices?.addEventListener("change",refreshKnowledgeDocumentPicker);
+  refreshKnowledgeDocumentPicker();
 }
 $$('[data-action="new-task"]').forEach(b=>b.onclick=()=>openTaskModal());$$('[data-action="new-project"]').forEach(b=>b.onclick=()=>openProjectModal());$$('[data-action="new-event"]').forEach(b=>b.onclick=()=>openEventModal());$$('[data-action="new-member"]').forEach(b=>b.onclick=()=>openMemberModal());$$('[data-action="new-group"]').forEach(b=>b.onclick=()=>openGroupModal());$$('[data-action="new-meeting"]').forEach(b=>b.onclick=()=>openMeetingModal());$$('[data-action="new-knowledge"]').forEach(b=>b.onclick=()=>openKnowledgeModal());
 $("#quickCreateBtn").onclick=()=>openTaskModal();
@@ -4267,15 +4738,1130 @@ async function handleAreaFolderUpload(area,inputId,categoryId=""){
     alert(e.message);
   }
 }
-$("#uploadBtn").onclick=()=>handleAreaUpload("documents","fileInput","docCategory");
+$("#uploadBtn").onclick=()=>handleAreaUpload("documents","fileInput");
 $("#meetingUploadBtn").onclick=()=>handleAreaUpload("meetings","meetingFileInput");
 $("#knowledgeUploadBtn").onclick=()=>handleAreaUpload("knowledge","knowledgeFileInput");
 $("#documentFolderUploadBtn").onclick=()=>$("#documentFolderInput").click();
 $("#meetingFolderUploadBtn").onclick=()=>$("#meetingFolderInput").click();
 $("#knowledgeFolderUploadBtn").onclick=()=>$("#knowledgeFolderInput").click();
-$("#documentFolderInput").onchange=()=>handleAreaFolderUpload("documents","documentFolderInput","docCategory");
+$("#documentFolderInput").onchange=()=>handleAreaFolderUpload("documents","documentFolderInput");
 $("#meetingFolderInput").onchange=()=>handleAreaFolderUpload("meetings","meetingFolderInput");
 $("#knowledgeFolderInput").onchange=()=>handleAreaFolderUpload("knowledge","knowledgeFolderInput");
+
+
+/* =========================================================
+   V-Planer 1.5.0–1.7.0
+   Globale Suche, allgemeine Verknüpfungen, Papierkorb,
+   Mitgliederbeziehungen/Datenaustausch und Mobile Agenda
+   ========================================================= */
+
+const LINK_TYPE_META={
+  task:{collection:"tasks",label:"Aufgabe",plural:"Aufgaben",icon:"✅",view:"tasks"},
+  project:{collection:"projects",label:"Projekt",plural:"Projekte",icon:"📁",view:"projects"},
+  event:{collection:"events",label:"Termin",plural:"Termine",icon:"📅",view:"calendar"},
+  member:{collection:"members",label:"Mitglied",plural:"Mitglieder",icon:"👤",view:"members"},
+  group:{collection:"groups",label:"Gruppe",plural:"Gruppen",icon:"🌳",view:"groups"},
+  meeting:{collection:"meetings",label:"Sitzung / Beschluss",plural:"Sitzungen & Beschlüsse",icon:"📝",view:"meetings"},
+  document:{collection:"documents",label:"Dokument",plural:"Dokumente & Bilder",icon:"📄",view:"documents"},
+  knowledge:{collection:"knowledge",label:"Vereinswissen",plural:"Vereinswissen",icon:"📚",view:"knowledge"},
+  function:{collection:"functions",label:"Funktion",plural:"Funktionen",icon:"🎖️",view:"groups"},
+  fine:{collection:"fines",label:"Strafe",plural:"Strafen",icon:"⚠️",view:"finance-fines"}
+};
+function linkRecord(type,id,includeDeleted=false){
+  const meta=LINK_TYPE_META[type];
+  if(!meta)return null;
+  const rows=db[meta.collection]||[];
+  return rows.find(r=>r.id===id&&(includeDeleted||!r.deletedAt))||null;
+}
+function linkRecordTitle(type,rec){
+  if(!rec)return "Nicht mehr vorhanden";
+  if(type==="task")return rec.title||"Aufgabe";
+  if(type==="project")return rec.name||"Projekt";
+  if(type==="event")return rec.title||"Termin";
+  if(type==="member")return memberFullName(rec);
+  if(type==="group")return rec.name||"Gruppe";
+  if(type==="meeting")return rec.title||"Sitzung";
+  if(type==="document")return rec.name||"Datei";
+  if(type==="knowledge")return rec.title||"Vereinswissen";
+  if(type==="function")return rec.title||"Funktion";
+  if(type==="fine")return rec.reason||"Strafe";
+  return rec.title||rec.name||"Eintrag";
+}
+function linkRecordSubtitle(type,rec){
+  if(!rec)return "";
+  if(type==="task")return `${rec.due?fmtDate(rec.due):"ohne Fälligkeit"} · ${statusLabel(rec.status)}`;
+  if(type==="project")return `${projectDateRangeText(rec)} · ${statusLabel(rec.status)}`;
+  if(type==="event")return `${eventDateRangeText(rec)}${eventTimeRangeText(rec)?` · ${eventTimeRangeText(rec)}`:""}`;
+  if(type==="member")return `${memberNo(rec)} · ${statusLabel(rec.status)}`;
+  if(type==="group")return rec.type||"Gruppe";
+  if(type==="meeting")return rec.date?fmtDate(rec.date):"ohne Datum";
+  if(type==="document")return `${fileTypeLabel(rec)} · ${documentFolderPathText(rec)}`;
+  if(type==="knowledge")return groupName(rec.groupId);
+  if(type==="function")return `${rec.kind||"Funktion"} · ${rec.memberId?(byId("members",rec.memberId)?memberFullName(byId("members",rec.memberId)):"nicht besetzt"):"nicht besetzt"}`;
+  if(type==="fine")return `${fineMemberLabel(rec)} · ${fineMoney(rec.amount)} · ${fineStatusLabel(rec.status)}`;
+  return "";
+}
+function genericLinksFor(type,id){
+  return activeRows("links").filter(l=>
+    (l.aType===type&&l.aId===id)||(l.bType===type&&l.bId===id)
+  );
+}
+function genericLinkBetween(aType,aId,bType,bId){
+  return activeRows("links").find(l=>
+    (l.aType===aType&&l.aId===aId&&l.bType===bType&&l.bId===bId)||
+    (l.aType===bType&&l.aId===bId&&l.bType===aType&&l.bId===aId)
+  )||null;
+}
+function relatedRecordItems(type,id){
+  const result=[],seen=new Set();
+  const push=(targetType,targetId,source="generic",sourceId="",removable=true)=>{
+    const key=`${targetType}:${targetId}`;
+    if(seen.has(key))return;
+    const rec=linkRecord(targetType,targetId);
+    if(!rec)return;
+    seen.add(key);
+    result.push({type:targetType,id:targetId,record:rec,source,sourceId,removable});
+  };
+  genericLinksFor(type,id).forEach(l=>{
+    if(l.aType===type&&l.aId===id)push(l.bType,l.bId,"generic",l.id,true);
+    else push(l.aType,l.aId,"generic",l.id,true);
+  });
+
+  // Existing dedicated relationships are surfaced in the same UI.
+  if(type==="project"){
+    const p=linkRecord("project",id);
+    const e=linkedEventForProject(p);
+    if(e)push("event",e.id,"projectEvent","",true);
+    projectTasks(id).filter(t=>!t.deletedAt).forEach(t=>push("task",t.id,"taskProject","",false));
+  }
+  if(type==="event"){
+    const e=linkRecord("event",id),p=linkedProjectForEvent(e);
+    if(p)push("project",p.id,"projectEvent","",true);
+  }
+  if(type==="task"){
+    const t=linkRecord("task",id),p=t?.projectId?recordById("projects",t.projectId):null;
+    if(p)push("project",p.id,"taskProject","",false);
+  }
+  if(type==="knowledge"){
+    const k=linkRecord("knowledge",id);
+    knowledgeLinkedDocuments(k).forEach(d=>push("document",d.id,"knowledgeDocument","",true));
+  }
+  if(type==="document"){
+    knowledgeEntriesForDocument(id).forEach(k=>push("knowledge",k.id,"knowledgeDocument","",true));
+  }
+  return result;
+}
+function relatedRecordCount(type,id){return relatedRecordItems(type,id).length}
+function addRecordLink(aType,aId,bType,bId){
+  if(!LINK_TYPE_META[aType]||!LINK_TYPE_META[bType]||!aId||!bId)return false;
+  if(aType===bType&&aId===bId)return false;
+
+  // Preserve the established one-to-one project/event semantics.
+  if((aType==="project"&&bType==="event")||(aType==="event"&&bType==="project")){
+    const p=aType==="project"?linkRecord("project",aId):linkRecord("project",bId);
+    const e=aType==="event"?linkRecord("event",aId):linkRecord("event",bId);
+    if(p&&e){linkProjectEvent(p,e);return true}
+  }
+  // Preserve knowledge/document links as their existing compact field.
+  if((aType==="knowledge"&&bType==="document")||(aType==="document"&&bType==="knowledge")){
+    const k=aType==="knowledge"?linkRecord("knowledge",aId):linkRecord("knowledge",bId);
+    const d=aType==="document"?linkRecord("document",aId):linkRecord("document",bId);
+    if(k&&d){
+      k.documentIds=[...new Set([...knowledgeLinkedDocumentIds(k),String(d.id)])];
+      touch(k);
+      return true;
+    }
+  }
+  if(genericLinkBetween(aType,aId,bType,bId))return false;
+  db.links.push({id:uid(),aType,aId,bType,bId,createdAt:now(),updatedAt:now()});
+  return true;
+}
+function removeRecordLink(sourceType,sourceId,item){
+  if(item.source==="generic"){
+    markDeleted("links",item.sourceId);
+    return;
+  }
+  if(item.source==="projectEvent"){
+    const p=sourceType==="project"?linkRecord("project",sourceId):item.type==="project"?item.record:linkedProjectForEvent(linkRecord("event",sourceId));
+    const e=sourceType==="event"?linkRecord("event",sourceId):item.type==="event"?item.record:linkedEventForProject(linkRecord("project",sourceId));
+    if(p&&e)detachProjectEvent(p,e);
+    return;
+  }
+  if(item.source==="knowledgeDocument"){
+    const knowledge=sourceType==="knowledge"?linkRecord("knowledge",sourceId):item.type==="knowledge"?item.record:null;
+    const documentId=sourceType==="document"?sourceId:item.type==="document"?item.id:"";
+    if(knowledge&&documentId){
+      knowledge.documentIds=knowledgeLinkedDocumentIds(knowledge).filter(x=>x!==String(documentId));
+      touch(knowledge);
+    }
+  }
+}
+function linkTargetOptions(type,sourceType,sourceId){
+  const meta=LINK_TYPE_META[type];
+  if(!meta)return '<option value="">Keine Auswahl</option>';
+  const rows=activeRows(meta.collection)
+    .filter(r=>!(type===sourceType&&r.id===sourceId))
+    .slice()
+    .sort((a,b)=>linkRecordTitle(type,a).localeCompare(linkRecordTitle(type,b),"de",{sensitivity:"base"}));
+  return `<option value="">Eintrag auswählen …</option>`+rows.map(r=>`<option value="${r.id}">${esc(linkRecordTitle(type,r))} · ${esc(linkRecordSubtitle(type,r))}</option>`).join("");
+}
+function openLinkManager(type,id){
+  const source=linkRecord(type,id);
+  if(!source)return;
+  const dlg=$("#detailModal");
+  const render=()=>{
+    const related=relatedRecordItems(type,id);
+    $("#detailTitle").textContent="Verknüpfte Inhalte";
+    $("#detailBody").innerHTML=`<div class="record-links-panel">
+      <div class="record-link-source">
+        <b>${esc(LINK_TYPE_META[type].icon)} ${esc(linkRecordTitle(type,source))}</b>
+        <small>${esc(LINK_TYPE_META[type].label)} · ${related.length} Verknüpfung${related.length===1?"":"en"}</small>
+      </div>
+      <div class="record-link-add">
+        <label>Bereich
+          <select id="recordLinkType">${Object.entries(LINK_TYPE_META).map(([key,m])=>`<option value="${key}" ${key==="document"?"selected":""}>${esc(m.label)}</option>`).join("")}</select>
+        </label>
+        <label>Eintrag
+          <select id="recordLinkTarget"></select>
+        </label>
+        <button class="btn primary" id="recordLinkAddBtn" type="button">Verknüpfen</button>
+      </div>
+      <div>
+        <h3 style="font-size:13px;margin:0 0 7px">Verknüpfte Inhalte</h3>
+        <div class="record-link-list">
+          ${related.length?related.map(item=>`<div class="record-link-row">
+            <span class="record-link-row-icon">${LINK_TYPE_META[item.type]?.icon||"↗"}</span>
+            <div class="record-link-row-copy">
+              <b>${esc(linkRecordTitle(item.type,item.record))}</b>
+              <small>${esc(LINK_TYPE_META[item.type]?.label||item.type)} · ${esc(linkRecordSubtitle(item.type,item.record))}${item.source==="taskProject"?" · automatisch über Projekt":""}</small>
+            </div>
+            <div class="record-link-actions">
+              <button class="btn tiny secondary" type="button" data-open-related="${item.type}" data-related-id="${item.id}">Öffnen</button>
+              ${item.removable?`<button class="btn tiny danger" type="button" data-remove-related="${item.type}" data-related-id="${item.id}" data-related-source="${item.source}" data-related-source-id="${item.sourceId||""}">Lösen</button>`:""}
+            </div>
+          </div>`).join(""):`<div class="empty">Noch keine Inhalte verknüpft.</div>`}
+        </div>
+      </div>
+    </div>`;
+    if(!dlg.open)dlg.showModal();
+
+    const typeSelect=$("#recordLinkType"),targetSelect=$("#recordLinkTarget");
+    const refreshTargets=()=>{targetSelect.innerHTML=linkTargetOptions(typeSelect.value,type,id)};
+    typeSelect.onchange=refreshTargets;refreshTargets();
+    $("#recordLinkAddBtn").onclick=()=>{
+      const targetType=typeSelect.value,targetId=targetSelect.value;
+      if(!targetId)return alert("Bitte einen Eintrag auswählen.");
+      if(!addRecordLink(type,id,targetType,targetId))return alert("Diese Verknüpfung besteht bereits oder ist nicht möglich.");
+      saveLocal();
+      render();
+    };
+    $$("[data-open-related]").forEach(btn=>btn.onclick=()=>{
+      dlg.close();
+      openLinkedRecord(btn.dataset.openRelated,btn.dataset.relatedId);
+    });
+    $$("[data-remove-related]").forEach(btn=>btn.onclick=()=>{
+      const item=related.find(x=>x.type===btn.dataset.removeRelated&&x.id===btn.dataset.relatedId&&x.source===btn.dataset.relatedSource);
+      if(!item)return;
+      if(!confirm(`Verknüpfung zu „${linkRecordTitle(item.type,item.record)}“ lösen?\n\nDer verknüpfte Inhalt selbst bleibt erhalten.`))return;
+      removeRecordLink(type,id,item);
+      saveLocal();
+      render();
+    });
+  };
+  render();
+}
+document.addEventListener("click",e=>{
+  const btn=e.target.closest?.("[data-manage-links]");
+  if(!btn)return;
+  e.preventDefault();
+  openLinkManager(btn.dataset.manageLinks,btn.dataset.linkId);
+});
+$("#linkGroupBtn")?.addEventListener("click",()=>{if(selectedGroupId)openLinkManager("group",selectedGroupId)});
+
+/* ---------- Global search ---------- */
+const GLOBAL_SEARCH_TYPES=["task","project","event","member","group","meeting","document","knowledge","function","fine"];
+function globalSearchText(type,r){
+  if(type==="task")return `${r.title||""} ${r.description||""} ${projectNameAny(r.projectId)} ${groupName(r.groupId)}`;
+  if(type==="project")return `${r.name||""} ${r.description||""} ${groupName(r.groupId)}`;
+  if(type==="event")return `${r.title||""} ${r.description||""} ${r.location||""} ${groupName(r.groupId)}`;
+  if(type==="member")return `${r.firstName||""} ${r.lastName||""} ${r.memberNo||""} ${r.email||""} ${r.phone||""} ${r.address||""}`;
+  if(type==="group")return `${r.name||""} ${r.type||""} ${r.description||""}`;
+  if(type==="meeting")return `${r.title||""} ${r.notes||""} ${(r.decisions||[]).join(" ")} ${groupName(r.groupId)}`;
+  if(type==="document")return `${r.name||""} ${fileTypeLabel(r)} ${documentFolderPathText(r)}`;
+  if(type==="knowledge")return `${r.title||""} ${r.text||""} ${groupName(r.groupId)} ${knowledgeLinkedDocuments(r).map(d=>d.name).join(" ")}`;
+  if(type==="function")return `${r.title||""} ${r.kind||""} ${groupName(r.groupId)} ${r.memberId&&byId("members",r.memberId)?memberFullName(byId("members",r.memberId)):""}`;
+  if(type==="fine")return `${fineMemberLabel(r)} ${r.reason||""} ${r.notes||""} ${fineStatusLabel(r.status)}`;
+  return linkRecordTitle(type,r);
+}
+function globalSearch(query){
+  const q=String(query||"").trim().toLocaleLowerCase("de-DE");
+  if(q.length<2)return [];
+  const tokens=q.split(/\s+/).filter(Boolean);
+  const results=[];
+  GLOBAL_SEARCH_TYPES.forEach(type=>{
+    const meta=LINK_TYPE_META[type];
+    activeRows(meta.collection).forEach(r=>{
+      const hay=globalSearchText(type,r).toLocaleLowerCase("de-DE");
+      if(tokens.every(t=>hay.includes(t)))results.push({type,id:r.id,record:r});
+    });
+  });
+  return results;
+}
+function renderGlobalSearch(){
+  const input=$("#globalSearchInput"),box=$("#globalSearchResults"),q=input?.value||"";
+  if(!box)return;
+  if(String(q).trim().length<2){box.hidden=true;box.innerHTML="";return}
+  const rows=globalSearch(q);
+  const groups=GLOBAL_SEARCH_TYPES.map(type=>({type,rows:rows.filter(r=>r.type===type).slice(0,6)})).filter(g=>g.rows.length);
+  box.innerHTML=groups.length?groups.map(g=>`<div class="global-search-group">
+    <div class="global-search-group-title">${esc(LINK_TYPE_META[g.type].plural)}</div>
+    ${g.rows.map(x=>`<button class="global-search-hit" type="button" data-global-result="${x.type}" data-global-id="${x.id}">
+      <span class="global-search-hit-icon">${LINK_TYPE_META[x.type].icon}</span>
+      <span class="global-search-hit-copy"><b>${esc(linkRecordTitle(x.type,x.record))}</b><small>${esc(linkRecordSubtitle(x.type,x.record))}</small></span>
+    </button>`).join("")}
+  </div>`).join(""):`<div class="global-search-empty">Keine Treffer für „${esc(q)}“.</div>`;
+  box.hidden=false;
+}
+function closeGlobalSearch(){
+  $("#globalSearchResults").hidden=true;
+  $("#globalSearchWrap")?.classList.remove("mobile-open");
+}
+function openLinkedRecord(type,id){
+  const r=linkRecord(type,id);
+  if(!r)return alert("Der Eintrag ist nicht mehr vorhanden.");
+  closeGlobalSearch();
+  if(type==="task"){go("tasks");openTaskModal(r);return}
+  if(type==="project"){if(r.archivedAt)go("archive");else{go("projects");openProjectModal(r)}return}
+  if(type==="event"){go("calendar");showEventDetails(r);return}
+  if(type==="member"){
+    if($("#memberSearch"))$("#memberSearch").value="";
+    if($("#memberStatusFilter"))$("#memberStatusFilter").value="";
+    if($("#memberHonoraryFilter"))$("#memberHonoraryFilter").value="";
+    go("members");selectedMemberId=r.id;renderMembers();selectedMemberId=r.id;renderMemberDetail();
+    setTimeout(()=>$("#memberDetail")?.scrollIntoView({behavior:"smooth",block:"start"}),30);return
+  }
+  if(type==="group"){go("groups");selectedGroupId=r.id;renderGroups();renderGroupDetail();return}
+  if(type==="meeting"){selectedFolderByArea.meetings=r.folderId||"";go("meetings");renderMeetings();openMeetingModal(r);return}
+  if(type==="knowledge"){selectedFolderByArea.knowledge=r.folderId||"";go("knowledge");renderKnowledge();openKnowledgeModal(r);return}
+  if(type==="function"){go("groups");selectedGroupId=r.groupId||"";renderGroups();renderGroupDetail();openFunctionModal(r);return}
+  if(type==="fine"){go("finance-fines");if(db.settings.modules.finance!==false)openFineModal(r);return}
+  if(type==="document"){
+    const area=r.area||"documents";
+    if(area==="tasks"&&r.taskId){const t=recordById("tasks",r.taskId);if(t){go("tasks");openTaskModal(t);return}}
+    if(["meetings","documents","knowledge"].includes(area)){
+      if(area==="documents"&&$("#documentSearch"))$("#documentSearch").value="";
+      if(area==="knowledge"&&$("#knowledgeSearch"))$("#knowledgeSearch").value="";
+      selectedFolderByArea[area]=r.folderId||"";
+      go(area);
+      renderArea(area);
+      setTimeout(()=>document.querySelector(`[data-export-file="${CSS.escape(r.id)}"]`)?.closest("tr")?.scrollIntoView({behavior:"smooth",block:"center"}),40);
+    }
+  }
+}
+$("#globalSearchInput")?.addEventListener("input",renderGlobalSearch);
+$("#globalSearchInput")?.addEventListener("keydown",e=>{if(e.key==="Escape")closeGlobalSearch()});
+$("#globalSearchClear")?.addEventListener("click",()=>{$("#globalSearchInput").value="";renderGlobalSearch();$("#globalSearchInput").focus()});
+$("#globalSearchMobileBtn")?.addEventListener("click",()=>{
+  $("#globalSearchWrap").classList.toggle("mobile-open");
+  setTimeout(()=>$("#globalSearchInput")?.focus(),20);
+});
+$("#globalSearchResults")?.addEventListener("click",e=>{
+  const hit=e.target.closest?.("[data-global-result]");
+  if(hit)openLinkedRecord(hit.dataset.globalResult,hit.dataset.globalId);
+});
+document.addEventListener("click",e=>{
+  const wrap=$("#globalSearchWrap");
+  if(wrap&&!wrap.contains(e.target))$("#globalSearchResults").hidden=true;
+});
+document.addEventListener("keydown",e=>{
+  if((e.ctrlKey||e.metaKey)&&String(e.key).toLowerCase()==="k"){
+    e.preventDefault();
+    const wrap=$("#globalSearchWrap"),input=$("#globalSearchInput");
+    if(window.innerWidth<=760)wrap?.classList.add("mobile-open");
+    input?.focus();
+    input?.select();
+  }
+});
+
+/* ---------- Papierkorb ---------- */
+const TRASH_META={
+  tasks:{label:"Aufgabe",icon:"✅"},projects:{label:"Projekt",icon:"📁"},events:{label:"Termin",icon:"📅"},
+  members:{label:"Mitglied",icon:"👤"},groups:{label:"Gruppe",icon:"🌳"},functions:{label:"Funktion",icon:"🎖️"},
+  meetings:{label:"Sitzung / Beschluss",icon:"📝"},knowledge:{label:"Vereinswissen",icon:"📚"},
+  documents:{label:"Dokument",icon:"📄"},folders:{label:"Ordner",icon:"📂"},fines:{label:"Strafe",icon:"⚠️"},
+  households:{label:"Haushalt",icon:"⌂"}
+};
+function trashRecordTitle(collection,r){
+  if(collection==="tasks")return r.title||"Aufgabe";
+  if(collection==="projects")return r.name||"Projekt";
+  if(collection==="events")return r.title||"Termin";
+  if(collection==="members")return memberFullName(r);
+  if(collection==="groups")return r.name||"Gruppe";
+  if(collection==="functions")return r.title||"Funktion";
+  if(collection==="meetings")return r.title||"Sitzung";
+  if(collection==="knowledge")return r.title||"Vereinswissen";
+  if(collection==="documents")return r.name||"Datei";
+  if(collection==="folders")return r.name||"Ordner";
+  if(collection==="fines")return `${r.reason||"Strafe"} · ${r.memberNameSnapshot||""}`;
+  if(collection==="households")return r.name||"Haushalt";
+  return r.title||r.name||"Eintrag";
+}
+function deletedTrashRows(){
+  const rows=[];
+  Object.keys(TRASH_META).forEach(collection=>{
+    (db[collection]||[]).filter(r=>!!r.deletedAt&&!r.purgedAt).forEach(r=>{
+      if(r.trashRootType==="folder"&&collection!=="folders")return;
+      if(r.trashRootType==="group"&&collection!=="groups")return;
+      if(collection==="folders"){
+        const parent=(db.folders||[]).find(f=>f.id===r.parentId);
+        if(r.trashRootId&&r.trashRootId!==r.id)return;
+        if(!r.trashRootId&&parent?.deletedAt)return;
+      }
+      if(collection==="groups"&&r.trashRootId&&r.trashRootId!==r.id)return;
+      rows.push({collection,record:r});
+    });
+  });
+  return rows.sort((a,b)=>String(b.record.deletedAt||"").localeCompare(String(a.record.deletedAt||"")));
+}
+function updateTrashBadge(count=deletedTrashRows().length){
+  [$("#trashNavCount"),$("#mobileTrashCount")].forEach(el=>{
+    if(!el)return;
+    el.textContent=count>99?"99+":String(count||"");
+    el.classList.toggle("has-items",count>0);
+  });
+}
+function renderTrash(){
+  const list=$("#trashList");
+  if(!list)return;
+  const all=deletedTrashRows(),q=($("#trashSearch")?.value||"").trim().toLowerCase(),type=$("#trashTypeFilter")?.value||"";
+  const rows=all.filter(x=>(!type||x.collection===type)&&(!q||trashRecordTitle(x.collection,x.record).toLowerCase().includes(q)));
+  $("#trashCount").textContent=all.length;
+  updateTrashBadge(all.length);
+  $("#emptyTrashBtn").disabled=!all.length;
+  list.innerHTML=rows.length?rows.map(({collection,record})=>{
+    const meta=TRASH_META[collection]||{label:collection,icon:"🗑️"};
+    const batch=record.trashBatchId?` · zusammengehörige Löschung`:"";
+    return `<div class="trash-row">
+      <span class="trash-row-icon">${meta.icon}</span>
+      <div class="trash-row-copy">
+        <b>${esc(trashRecordTitle(collection,record))}</b>
+        <small>${esc(meta.label)} · gelöscht ${record.deletedAt?new Date(record.deletedAt).toLocaleString("de-DE"):"—"}${batch}</small>
+      </div>
+      <div class="trash-row-actions">
+        <button class="btn tiny secondary" type="button" data-trash-restore="${collection}" data-trash-id="${record.id}">Wiederherstellen</button>
+        <button class="btn tiny danger" type="button" data-trash-purge="${collection}" data-trash-id="${record.id}">Endgültig löschen</button>
+      </div>
+    </div>`;
+  }).join(""):`<div class="card empty">Der Papierkorb ist leer.</div>`;
+  $$("[data-trash-restore]").forEach(btn=>btn.onclick=()=>restoreTrashRecord(btn.dataset.trashRestore,btn.dataset.trashId));
+  $$("[data-trash-purge]").forEach(btn=>btn.onclick=()=>purgeTrashRecord(btn.dataset.trashPurge,btn.dataset.trashId));
+}
+function clearDeletedFlag(r){
+  if(!r)return;
+  delete r.deletedAt;delete r.purgedAt;delete r.trashBatchId;delete r.trashRootType;delete r.trashRootId;
+  r.updatedAt=now();
+}
+async function untrashDriveRecord(r){
+  const driveId=r?.driveFolderId||((r&&db.documents?.includes(r))?r.id:"");
+  if(!driveId)return;
+  if(!hasUsableAccessToken())await ensureDriveAccess();
+  await driveFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(driveId)}?fields=id,trashed`,{
+    method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({trashed:false})
+  });
+}
+async function restoreTrashRecord(collection,id){
+  const r=(db[collection]||[]).find(x=>x.id===id&&x.deletedAt);
+  if(!r)return;
+  const batch=r.trashBatchId||"";
+  const records=[];
+  if(batch){
+    COLLECTIONS.forEach(c=>(db[c]||[]).filter(x=>x.deletedAt&&x.trashBatchId===batch).forEach(x=>records.push({collection:c,record:x})));
+  }else records.push({collection,record:r});
+  try{
+    for(const x of records){
+      if(x.collection==="documents"||x.collection==="folders"){
+        try{await untrashDriveRecord(x.record)}catch(e){console.warn("Drive-Wiederherstellung:",e)}
+      }
+      clearDeletedFlag(x.record);
+    }
+    saveLocal();
+    alert(records.length>1?`${records.length} zusammengehörige Einträge wurden wiederhergestellt.`:"Eintrag wurde wiederhergestellt.");
+  }catch(e){alert(`Wiederherstellung fehlgeschlagen:\n${e.message}`)}
+}
+function purgeRelatedGenericLinks(type,id){
+  activeRows("links").filter(l=>(l.aType===type&&l.aId===id)||(l.bType===type&&l.bId===id)).forEach(l=>markDeleted("links",l.id));
+}
+function cleanupBeforePermanentRemoval(collection,r){
+  if(collection==="documents"){
+    detachDocumentFromKnowledge(r.id);
+    purgeRelatedGenericLinks("document",r.id);
+  }else if(collection==="knowledge")purgeRelatedGenericLinks("knowledge",r.id);
+  else if(collection==="tasks")purgeRelatedGenericLinks("task",r.id);
+  else if(collection==="projects"){
+    projectTasks(r.id).forEach(t=>{if(!t.deletedAt){t.projectId="";touch(t)}});
+    const e=linkedEventForProject(r);if(e)detachProjectEvent(r,e);
+    purgeRelatedGenericLinks("project",r.id);
+  }else if(collection==="events"){
+    const p=linkedProjectForEvent(r);if(p)detachProjectEvent(p,r);
+    purgeRelatedGenericLinks("event",r.id);
+  }else if(collection==="members"){
+    (db.memberRelations||[]).filter(rel=>!rel.deletedAt&&(rel.memberAId===r.id||rel.memberBId===r.id)).forEach(rel=>markDeleted("memberRelations",rel.id));
+    activeRows("functions").forEach(f=>{if(f.memberId===r.id){f.memberId="";touch(f)}});
+    activeRows("groups").forEach(g=>{if(g.contactMemberId===r.id){g.contactMemberId="";touch(g)}});
+    purgeRelatedGenericLinks("member",r.id);
+  }else if(collection==="groups"){
+    const gid=r.id;
+    activeRows("members").forEach(m=>{if((m.groupIds||[]).includes(gid)){m.groupIds=(m.groupIds||[]).filter(x=>x!==gid);touch(m)}});
+    ["tasks","projects","events","meetings"].forEach(c=>activeRows(c).forEach(x=>{if(x.groupId===gid){x.groupId="";touch(x)}}));
+    activeRows("functions").forEach(f=>{if(f.groupId===gid){f.groupId="";touch(f)}});
+    purgeRelatedGenericLinks("group",r.id);
+  }else if(collection==="meetings")purgeRelatedGenericLinks("meeting",r.id);
+  else if(collection==="functions")purgeRelatedGenericLinks("function",r.id);
+  else if(collection==="fines")purgeRelatedGenericLinks("fine",r.id);
+  else if(collection==="households"){
+    activeRows("members").forEach(m=>{if(m.householdId===r.id){m.householdId="";touch(m)}});
+  }
+}
+async function permanentlyDeleteDriveRecord(collection,r){
+  const driveId=collection==="folders"?r.driveFolderId:collection==="documents"?r.id:"";
+  if(!driveId)return;
+  if(!hasUsableAccessToken())await ensureDriveAccess();
+  try{await driveFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(driveId)}`,{method:"DELETE"})}
+  catch(e){console.warn("Endgültiges Löschen in Drive fehlgeschlagen:",e)}
+}
+function markRecordPurged(collection,r){
+  if(!r)return;
+  r.purgedAt=now();
+  r.updatedAt=r.purgedAt;
+  // Keep a tombstone so Drive merge cannot resurrect a permanently deleted record.
+}
+async function purgeTrashRecord(collection,id){
+  const r=(db[collection]||[]).find(x=>x.id===id&&x.deletedAt);
+  if(!r)return;
+  const title=trashRecordTitle(collection,r);
+  if(!confirm(`„${title}“ endgültig löschen?\n\nDieser Schritt kann nicht rückgängig gemacht werden.`))return;
+  const batch=r.trashBatchId||"";
+  const records=[];
+  if(batch){
+    COLLECTIONS.forEach(c=>(db[c]||[]).filter(x=>x.deletedAt&&x.trashBatchId===batch).forEach(x=>records.push({collection:c,record:x})));
+  }else records.push({collection,record:r});
+  for(const item of records){
+    cleanupBeforePermanentRemoval(item.collection,item.record);
+    if(item.collection==="documents"||item.collection==="folders")await permanentlyDeleteDriveRecord(item.collection,item.record);
+  }
+  records.forEach(item=>markRecordPurged(item.collection,item.record));
+  saveLocal();
+}
+async function purgeAllTrash(){
+  const rows=deletedTrashRows();
+  if(!rows.length)return;
+  if(!confirm(`Papierkorb mit ${rows.length} Einträgen endgültig leeren?\n\nAlle gelöschten Inhalte werden dauerhaft entfernt. Dieser Schritt kann nicht rückgängig gemacht werden.`))return;
+  // Cleanup every deleted record exactly once, including hidden children.
+  const deleted=[];
+  Object.keys(TRASH_META).forEach(c=>(db[c]||[]).filter(r=>r.deletedAt&&!r.purgedAt).forEach(r=>deleted.push({collection:c,record:r})));
+  for(const item of deleted){
+    cleanupBeforePermanentRemoval(item.collection,item.record);
+    if(item.collection==="documents"||item.collection==="folders")await permanentlyDeleteDriveRecord(item.collection,item.record);
+  }
+  deleted.forEach(item=>markRecordPurged(item.collection,item.record));
+  saveLocal();
+}
+$("#trashSearch")?.addEventListener("input",renderTrash);
+$("#trashTypeFilter")?.addEventListener("change",renderTrash);
+$("#emptyTrashBtn")?.addEventListener("click",()=>purgeAllTrash().catch(e=>alert(e.message)));
+
+/* Reversible group deletion: keep associations intact until permanent purge. */
+function deleteSelectedGroup(){
+  const g=byId("groups",selectedGroupId);if(!g)return;
+  const ids=[],walk=id=>{ids.push(id);activeRows("groups").filter(x=>x.parentId===id).forEach(x=>walk(x.id))};walk(g.id);
+  const functions=activeRows("functions").filter(f=>ids.includes(f.groupId));
+  if(!confirm(`Gruppe „${g.name}“ in den Papierkorb verschieben?\n\n${ids.length-1} Untergruppe${ids.length-1===1?"":"n"} und ${functions.length} Funktion${functions.length===1?"":"en"} werden gemeinsam in den Papierkorb verschoben. Zuordnungen bleiben für eine Wiederherstellung gespeichert.`))return;
+  const trashBatchId=`group-${g.id}-${Date.now()}`;
+  ids.forEach(id=>markDeleted("groups",id,{trashBatchId,trashRootType:"group",trashRootId:g.id}));
+  functions.forEach(f=>markDeleted("functions",f.id,{trashBatchId,trashRootType:"group",trashRootId:g.id}));
+  selectedGroupId=null;saveLocal();
+}
+
+/* ---------- Calendar Agenda / Smartphone ---------- */
+const CALENDAR_DISPLAY_KEY="v-planer-calendar-display-v1";
+function calendarDisplayMode(){
+  const stored=localStorage.getItem(CALENDAR_DISPLAY_KEY);
+  if(stored==="agenda"||stored==="month")return stored;
+  return window.innerWidth<=760?"agenda":"month";
+}
+function setCalendarDisplayMode(mode){
+  if(mode!=="agenda"&&mode!=="month")return;
+  localStorage.setItem(CALENDAR_DISPLAY_KEY,mode);
+  applyCalendarDisplayMode();
+}
+function applyCalendarDisplayMode(){
+  const mode=calendarDisplayMode(),card=$("#view-calendar .calendar-card");
+  if(card){card.classList.toggle("is-agenda",mode==="agenda");card.classList.toggle("is-month",mode==="month")}
+  $$("[data-calendar-mode]").forEach(btn=>btn.classList.toggle("active",btn.dataset.calendarMode===mode));
+}
+function agendaItemsForDate(ds){
+  const date=new Date(`${ds}T12:00:00`),year=date.getFullYear();
+  const items=[];
+  activeRows("events").filter(e=>eventOccursOn(e,ds)).forEach(e=>items.push({
+    kind:"event",id:e.id,time:eventStartDate(e)===ds?(eventStartTime(e)||""):"",
+    title:e.title||"Termin",sub:[event.location,groupName(e.groupId)!=="—"?groupName(e.groupId):""].filter(Boolean).join(" · "),
+    icon:"📅",sort:`0-${eventStartTime(e)||"99:99"}`
+  }));
+  activeRows("tasks").filter(t=>t.due===ds).forEach(t=>items.push({
+    kind:"task",id:t.id,time:"",title:t.title||"Aufgabe",sub:`${statusLabel(t.status)} · ${projectNameAny(t.projectId)}`,
+    icon:"✓",sort:"1-00"
+  }));
+  activeRows("projects").filter(p=>projectOccursOn(p,ds)).forEach(p=>items.push({
+    kind:"project",id:p.id,time:"",title:p.name||"Projekt",sub:`${statusLabel(p.status)} · ${projectDateRangeText(p)}`,
+    icon:"◆",sort:"2-00"
+  }));
+  activeRows("members").filter(m=>m.status!=="deceased"&&m.birthDate&&recurringDateForYear(m.birthDate,year)===ds).forEach(m=>{
+    const age=year-Number(m.birthDate.slice(0,4));
+    items.push({kind:"member",id:m.id,time:"",title:memberFullName(m),sub:`${age}. Geburtstag${isRoundBirthdayAge(age)?" · Runder Geburtstag":""}`,icon:isRoundBirthdayAge(age)?"🎉":"🎂",sort:"3-00"});
+  });
+  if(db.settings.reminders.jubilee){
+    activeRows("members").filter(m=>m.status!=="deceased"&&m.entryDate&&recurringDateForYear(m.entryDate,year)===ds).forEach(m=>{
+      const years=year-Number(m.entryDate.slice(0,4));
+      if(years>0&&isConfiguredJubilee(years))items.push({kind:"member",id:m.id,time:"",title:memberFullName(m),sub:`${years}. Vereinsjubiläum`,icon:"★",sort:"4-00"});
+    });
+  }
+  return items.sort((a,b)=>a.sort.localeCompare(b.sort)||a.title.localeCompare(b.title,"de"));
+}
+function renderCalendarAgenda(){
+  const host=$("#calendarAgenda");if(!host)return;
+  const y=calDate.getFullYear(),m=calDate.getMonth(),today=todayStr(),currentMonth=today.startsWith(`${y}-${String(m+1).padStart(2,"0")}`);
+  let startDay=currentMonth?Number(today.slice(8,10)):1;
+  const monthDays=new Date(y,m+1,0).getDate();
+  let dates=[];
+  for(let d=startDay;d<=monthDays;d++)dates.push(`${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`);
+  // In the current month also show the first two weeks ahead so the agenda never ends abruptly.
+  if(currentMonth){
+    const last=new Date(y,m,monthDays,12);
+    for(let i=1;i<=14;i++){const x=new Date(last);x.setDate(x.getDate()+i);dates.push(`${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`)}
+  }
+  const populated=dates.map(ds=>({ds,items:agendaItemsForDate(ds)})).filter(x=>x.items.length);
+  host.innerHTML=populated.length?populated.map(day=>{
+    const d=new Date(`${day.ds}T12:00:00`),delta=Math.round((d-new Date(`${today}T12:00:00`))/86400000);
+    const relative=delta===0?"Heute":delta===1?"Morgen":new Intl.DateTimeFormat("de-DE",{weekday:"long"}).format(d);
+    const dateText=new Intl.DateTimeFormat("de-DE",{day:"2-digit",month:"long",year:day.ds.slice(0,4)!==today.slice(0,4)?"numeric":undefined}).format(d);
+    return `<section class="calendar-agenda-day">
+      <div class="calendar-agenda-date"><b>${esc(relative)}</b><span>${esc(dateText)}</span></div>
+      <div class="calendar-agenda-items">${day.items.map(item=>`<button class="calendar-agenda-item" type="button" data-agenda-type="${item.kind}" data-agenda-id="${item.id}">
+        <span class="calendar-agenda-time">${esc(item.time?`${item.time} Uhr`:"ganztägig")}</span>
+        <span class="calendar-agenda-icon">${item.icon}</span>
+        <span class="calendar-agenda-copy"><b>${esc(item.title)}</b><small>${esc(item.sub||"")}</small></span>
+        <span class="calendar-agenda-kind">${esc(LINK_TYPE_META[item.kind]?.label||"Mitglied")}</span>
+      </button>`).join("")}</div>
+    </section>`;
+  }).join(""):`<div class="calendar-agenda-empty">In diesem Zeitraum gibt es keine Termine, Aufgaben, Projekte oder persönlichen Ereignisse.</div>`;
+  $$("[data-agenda-type]").forEach(btn=>btn.onclick=()=>openLinkedRecord(btn.dataset.agendaType,btn.dataset.agendaId));
+}
+$$("[data-calendar-mode]").forEach(btn=>btn.addEventListener("click",()=>setCalendarDisplayMode(btn.dataset.calendarMode)));
+window.addEventListener("resize",()=>{if(!localStorage.getItem(CALENDAR_DISPLAY_KEY))applyCalendarDisplayMode()});
+
+
+/* ---------- Haushalte & echte Mitgliederbeziehungen ---------- */
+const RELATION_TYPES={
+  parent:{label:"Elternteil von",inverse:"child",inverseLabel:"Kind von"},
+  mother:{label:"Mutter von",inverse:"child",inverseLabel:"Kind von"},
+  father:{label:"Vater von",inverse:"child",inverseLabel:"Kind von"},
+  child:{label:"Kind von",inverse:"parent",inverseLabel:"Elternteil von"},
+  partner:{label:"Partner/in von",inverse:"partner",inverseLabel:"Partner/in von"},
+  sibling:{label:"Geschwister von",inverse:"sibling",inverseLabel:"Geschwister von"},
+  guardian:{label:"Gesetzliche Vertretung von",inverse:"ward",inverseLabel:"Wird gesetzlich vertreten von"},
+  ward:{label:"Wird gesetzlich vertreten von",inverse:"guardian",inverseLabel:"Gesetzliche Vertretung von"},
+  other:{label:"Sonstige Beziehung",inverse:"other",inverseLabel:"Sonstige Beziehung"}
+};
+function householdOptions(selected=""){
+  let html='<option value="">Kein Haushalt</option>';
+  const rows=activeRows("households").slice().sort((a,b)=>String(a.name||"").localeCompare(String(b.name||""),"de",{sensitivity:"base"}));
+  if(selected&&!rows.some(h=>h.id===selected))html+=`<option value="${esc(selected)}" selected>Haushalt im Papierkorb / nicht mehr vorhanden</option>`;
+  return html+rows.map(h=>`<option value="${h.id}" ${h.id===selected?"selected":""}>${esc(h.name||"Haushalt")}</option>`).join("");
+}
+function householdById(id){return id?byId("households",id):null}
+function householdMembers(id){return activeRows("members").filter(m=>m.householdId===id)}
+function ensureHouseholdByName(name){
+  const n=String(name||"").trim();if(!n)return "";
+  let h=activeRows("households").find(x=>String(x.name||"").trim().toLocaleLowerCase("de-DE")===n.toLocaleLowerCase("de-DE"));
+  if(!h){h={id:uid(),name:n,address:"",createdAt:now(),updatedAt:now()};db.households.push(h)}
+  return h.id;
+}
+function memberRelationsFor(memberId){
+  return activeRows("memberRelations").filter(r=>r.memberAId===memberId||r.memberBId===memberId);
+}
+function relationViewForMember(rel,memberId){
+  const isA=rel.memberAId===memberId,
+        otherId=isA?rel.memberBId:rel.memberAId,
+        other=byId("members",otherId),
+        key=isA?rel.typeAtoB:rel.typeBtoA;
+  return {rel,otherId,other,key,label:RELATION_TYPES[key]?.label||rel.customLabel||"Beziehung"};
+}
+function openRelationshipManager(memberId){
+  const member=byId("members",memberId);if(!member)return;
+  const dlg=$("#detailModal");
+  const render=()=>{
+    const rows=memberRelationsFor(memberId).map(r=>relationViewForMember(r,memberId));
+    const others=activeRows("members").filter(m=>m.id!==memberId).sort((a,b)=>memberFullName(a).localeCompare(memberFullName(b),"de"));
+    $("#detailTitle").textContent=`Beziehungen · ${memberFullName(member)}`;
+    $("#detailBody").innerHTML=`<div class="record-links-panel">
+      <div class="member-io-intro">Beziehungen werden als echte Verknüpfungen zwischen Mitgliedern gespeichert. Gegenbeziehungen werden automatisch erzeugt.</div>
+      <div class="record-link-add">
+        <label>Beziehung
+          <select id="memberRelationType">${Object.entries(RELATION_TYPES).filter(([k])=>k!=="ward").map(([k,v])=>`<option value="${k}">${esc(v.label)}</option>`).join("")}</select>
+        </label>
+        <label>Mitglied
+          <select id="memberRelationTarget"><option value="">Mitglied auswählen …</option>${others.map(m=>`<option value="${m.id}">${esc(memberFullName(m))} · ${esc(memberNo(m))}</option>`).join("")}</select>
+        </label>
+        <button class="btn primary" id="memberRelationAdd" type="button">Hinzufügen</button>
+      </div>
+      <div class="relationship-list">
+        ${rows.length?rows.map(x=>`<div class="relationship-row">
+          <div><b>${esc(x.label)} ${esc(x.other?memberFullName(x.other):"Nicht mehr vorhandenes Mitglied")}</b><small>${esc(x.rel.note||"")}</small></div>
+          <div class="record-link-actions">
+            ${x.other?`<button class="btn tiny secondary" type="button" data-open-related-member="${x.otherId}">Öffnen</button>`:""}
+            <button class="btn tiny danger" type="button" data-remove-member-relation="${x.rel.id}">Lösen</button>
+          </div>
+        </div>`).join(""):`<div class="empty">Noch keine Mitgliedsbeziehungen hinterlegt.</div>`}
+      </div>
+    </div>`;
+    if(!dlg.open)dlg.showModal();
+    $("#memberRelationAdd").onclick=()=>{
+      const otherId=$("#memberRelationTarget").value,type=$("#memberRelationType").value;
+      if(!otherId)return alert("Bitte ein Mitglied auswählen.");
+      const duplicate=activeRows("memberRelations").find(r=>(r.memberAId===memberId&&r.memberBId===otherId)||(r.memberAId===otherId&&r.memberBId===memberId));
+      if(duplicate)return alert("Zwischen diesen beiden Mitgliedern besteht bereits eine Beziehung. Bitte die vorhandene Beziehung zuerst lösen.");
+      const inv=RELATION_TYPES[type]?.inverse||"other";
+      db.memberRelations.push({id:uid(),memberAId:memberId,memberBId:otherId,typeAtoB:type,typeBtoA:inv,note:"",createdAt:now(),updatedAt:now()});
+      saveLocal();render();
+    };
+    $$("[data-remove-member-relation]").forEach(btn=>btn.onclick=()=>{
+      const rel=byId("memberRelations",btn.dataset.removeMemberRelation);if(!rel)return;
+      if(confirm("Mitgliederbeziehung lösen? Beide Mitglieder bleiben unverändert erhalten.")){markDeleted("memberRelations",rel.id);saveLocal();render()}
+    });
+    $$("[data-open-related-member]").forEach(btn=>btn.onclick=()=>{dlg.close();openLinkedRecord("member",btn.dataset.openRelatedMember)});
+  };
+  render();
+}
+function openHouseholdManager(){
+  const dlg=$("#detailModal");
+  const render=()=>{
+    const rows=activeRows("households").slice().sort((a,b)=>String(a.name||"").localeCompare(String(b.name||""),"de"));
+    $("#detailTitle").textContent="Haushalte & Familien";
+    $("#detailBody").innerHTML=`<div class="record-links-panel">
+      <div class="member-io-intro">Haushalte bündeln zusammengehörige Mitglieder. Die individuelle Mitgliedsadresse bleibt erhalten; eine gemeinsame Haushaltsadresse kann zusätzlich gepflegt werden.</div>
+      <div><button class="btn primary" id="newHouseholdBtn" type="button">+ Haushalt</button></div>
+      <div class="relationship-list">
+        ${rows.length?rows.map(h=>{
+          const members=householdMembers(h.id);
+          return `<div class="household-card">
+            <div class="household-card-head"><div><b>${esc(h.name||"Haushalt")}</b><small>${esc(h.address||"Keine gemeinsame Adresse")}</small></div><span class="link-count-badge">${members.length} Mitglied${members.length===1?"":"er"}</span></div>
+            <div class="household-members">${members.length?members.map(m=>`<span class="household-member-pill">${esc(memberFullName(m))}</span>`).join(""):'<span class="mini-meta">Noch keine Mitglieder zugeordnet.</span>'}</div>
+            <div class="record-link-actions"><button class="btn tiny secondary" type="button" data-edit-household="${h.id}">Bearbeiten</button><button class="btn tiny danger" type="button" data-delete-household="${h.id}">Löschen</button></div>
+          </div>`;
+        }).join(""):`<div class="empty">Noch keine Haushalte angelegt.</div>`}
+      </div>
+    </div>`;
+    if(!dlg.open)dlg.showModal();
+    $("#newHouseholdBtn").onclick=()=>{dlg.close();openHouseholdEditor(null)};
+    $$("[data-edit-household]").forEach(btn=>btn.onclick=()=>{const h=byId("households",btn.dataset.editHousehold);dlg.close();if(h)openHouseholdEditor(h)});
+    $$("[data-delete-household]").forEach(btn=>btn.onclick=()=>{
+      const h=byId("households",btn.dataset.deleteHousehold);if(!h)return;
+      if(confirm(`Haushalt „${h.name}“ in den Papierkorb verschieben?\n\nDie Mitgliedszuordnungen bleiben gespeichert und werden bei einer Wiederherstellung wieder sichtbar.`)){markDeleted("households",h.id);saveLocal();render()}
+    });
+  };
+  render();
+}
+function openHouseholdEditor(rec=null){
+  const r=rec||{name:"",address:""};
+  const selected=new Set(rec?householdMembers(rec.id).map(m=>m.id):[]);
+  showModal(rec?"Haushalt bearbeiten":"Neuer Haushalt",`<div class="form-grid">
+    <label class="full">Name des Haushalts<input id="householdName" value="${esc(r.name||"")}" placeholder="z. B. Familie Müller"></label>
+    <label class="full">Gemeinsame Anschrift<textarea id="householdAddress" rows="3">${esc(r.address||"")}</textarea></label>
+    <label class="full">Mitglieder<select id="householdMembers" multiple size="10">${activeRows("members").slice().sort((a,b)=>memberFullName(a).localeCompare(memberFullName(b),"de")).map(m=>`<option value="${m.id}" ${selected.has(m.id)?"selected":""}>${esc(memberFullName(m))} · ${esc(memberNo(m))}</option>`).join("")}</select></label>
+    <div class="form-note full">Mehrfachauswahl: Strg/Cmd oder auf Touch-Geräten die gewünschten Einträge nacheinander auswählen.</div>
+  </div>`,()=>{
+    const name=$("#householdName").value.trim();if(!name)return false;
+    const target=rec||{id:uid(),createdAt:now()};
+    Object.assign(target,{name,address:$("#householdAddress").value.trim()});touch(target);
+    if(!rec)db.households.push(target);
+    const memberIds=new Set([...$("#householdMembers").selectedOptions].map(o=>o.value));
+    activeRows("members").forEach(m=>{
+      if(memberIds.has(m.id)){
+        if(m.householdId!==target.id){m.householdId=target.id;touch(m)}
+      }else if(m.householdId===target.id){m.householdId="";touch(m)}
+    });
+    saveLocal();setTimeout(openHouseholdManager,50);return true;
+  });
+}
+$("#householdManagerBtn")?.addEventListener("click",openHouseholdManager);
+
+/* Override member detail with structured relationships and general links. */
+function renderMemberDetail(){
+  const m=byId("members",selectedMemberId);
+  if(!m){$("#memberDetail").innerHTML='<div class="empty">Mitglied auswählen.</div>';return}
+  const groups=effectiveGroupIdsForMember(m).map(groupName).filter(x=>x!=="—"),
+        histories=[...(m.statusHistory||[]),...(m.history||[])].sort((a,b)=>(b.date||"").localeCompare(a.date||"")).slice(0,6),
+        household=householdById(m.householdId),
+        relations=memberRelationsFor(m.id).map(r=>relationViewForMember(r,m.id));
+  $("#memberDetail").innerHTML=`<div class="member-hero">${memberPhotoHTML(m)}<div><h2>${esc(`${m.firstName||""} ${m.lastName||""}`.trim())}</h2><div class="mini-meta">Mitglied ${esc(memberNo(m))} · ${statusLabel(m.status)} · ${ageCategory(m)}</div></div></div>
+  <div class="member-card-digital"><div class="member-card-top"><div><b>V-Planer Mitgliedskarte</b><div style="font-size:20px;margin-top:8px">${esc(`${m.firstName||""} ${m.lastName||""}`.trim())}</div><small>${esc(groups.join(" · ")||"Gesamtverein")}</small></div><div style="text-align:right"><b>${esc(memberNo(m))}</b><div style="margin-top:8px">${m.honorary?`★ Ehrenmitglied${honoraryContributionFree(m)?" · beitragsfrei":""}`:""}</div></div></div></div>
+  <div class="detail-grid">
+    <div class="detail-box"><b>Geburtstag</b>${fmtDate(m.birthDate)} · ${ageAt(m.birthDate)??"—"} Jahre</div>
+    <div class="detail-box"><b>Eintritt</b>${fmtDate(m.entryDate)}${m.entryDate?` · ${jubileeYears(m)} Jahre`:""}</div>
+    <div class="detail-box"><b>Beitragsstatus</b>${honoraryContributionFree(m)?"Beitragsfrei · Ehrenmitglied":"Regulär"}</div>
+    <div class="detail-box"><b>Kontakt</b>${esc(m.email||"—")}<br>${esc(m.phone||"")}</div>
+    <div class="detail-box"><b>Notfallkontakt</b>${esc(m.emergencyName||"—")}<br>${esc(m.emergencyPhone||"")}</div>
+    <div class="detail-box"><b>Haushalt</b>${household?`${esc(household.name)}${household.address?`<br><small>${esc(household.address)}</small>`:""}`:esc(m.familyName||"—")}</div>
+    <div class="detail-box"><b>Gesetzliche Vertretung</b>${esc(m.guardian||"—")}</div>
+  </div>
+  <div class="member-actions">
+    <button class="btn tiny secondary" data-edit-member="${m.id}">Bearbeiten</button>
+    <button class="btn tiny secondary" data-member-card="${m.id}">Mitgliedskarte</button>
+    <button class="btn tiny secondary" data-manage-member-relations="${m.id}">Beziehungen (${relations.length})</button>
+    <button class="btn tiny secondary" data-manage-links="member" data-link-id="${m.id}">Verknüpfungen (${relatedRecordCount("member",m.id)})</button>
+    <button class="btn tiny danger" data-delete-member="${m.id}">Löschen</button>
+  </div>
+  <div class="member-relation-section">
+    <div class="member-relation-head"><h3>Mitgliederbeziehungen</h3><button class="action-link" data-manage-member-relations="${m.id}">Bearbeiten</button></div>
+    <div class="member-relation-list">${relations.length?relations.map(x=>`<button type="button" class="member-relation-row" data-related-member-card="${x.otherId}">
+      <span class="person-dot">👤</span><span><b>${esc(x.label)}</b><small>${esc(x.other?memberFullName(x.other):"Nicht mehr vorhanden")}</small></span>
+    </button>`).join(""):'<div class="mini-meta">Noch keine Beziehungen zu anderen Mitgliedern.</div>'}</div>
+    ${m.relationships?`<div class="mini-meta" style="margin-top:7px"><b>Früherer Freitext:</b> ${esc(m.relationships)}</div>`:""}
+  </div>
+  <h3 style="font-size:14px;margin:18px 0 6px">Historie</h3>${histories.length?`<ul class="history-list">${histories.map(h=>`<li>${fmtDate(h.date)} · ${esc(h.note||h.status||h.type||"")}</li>`).join("")}</ul>`:'<div class="mini-meta">Noch keine Historie.</div>'}
+  <h3 style="font-size:14px;margin:18px 0 6px">Zusatzfelder</h3><div class="mini-meta">${(m.extraFields||[]).map(x=>`${esc(x.key)}: ${esc(x.value)}`).join(" · ")||"Keine Zusatzfelder"}</div>`;
+  $('[data-edit-member]')?.addEventListener("click",()=>openMemberModal(m));
+  $('[data-member-card]')?.addEventListener("click",()=>showMemberCard(m));
+  $$('[data-manage-member-relations]').forEach(btn=>btn.onclick=()=>openRelationshipManager(btn.dataset.manageMemberRelations));
+  $$('[data-related-member-card]').forEach(btn=>btn.onclick=()=>{const other=byId("members",btn.dataset.relatedMemberCard);if(other){selectedMemberId=other.id;renderMembers();renderMemberDetail()}});
+  $('[data-delete-member]')?.addEventListener("click",()=>{
+    if(confirm(`Mitglied „${memberFullName(m)}“ in den Papierkorb verschieben?\n\nGruppen-, Funktions-, Haushalts- und Beziehungszuordnungen bleiben für eine mögliche Wiederherstellung gespeichert.`)){
+      markDeleted("members",m.id);selectedMemberId=null;saveLocal();
+    }
+  });
+}
+
+/* ---------- CSV / Excel Import & Export ---------- */
+const MEMBER_IO_FIELDS=[
+  {key:"memberNo",label:"Mitgliedsnummer",syn:["mitgliedsnummer","mitgliedsnr","mitglied nr","nummer","nr"]},
+  {key:"firstName",label:"Vorname",syn:["vorname","firstname","first name"]},
+  {key:"lastName",label:"Nachname",syn:["nachname","name","surname","lastname","last name"]},
+  {key:"birthDate",label:"Geburtsdatum",syn:["geburtsdatum","geburtstag","birthdate","date of birth"]},
+  {key:"status",label:"Status",syn:["status","mitgliedsstatus"]},
+  {key:"entryDate",label:"Eintritt",syn:["eintritt","eintrittsdatum","beitritt","joined"]},
+  {key:"exitDate",label:"Austritt",syn:["austritt","austrittsdatum","exit"]},
+  {key:"email",label:"E-Mail",syn:["e-mail","email","mail"]},
+  {key:"phone",label:"Telefon",syn:["telefon","phone","mobil","handy"]},
+  {key:"address",label:"Adresse",syn:["adresse","anschrift","address"]},
+  {key:"honorary",label:"Ehrenmitglied",syn:["ehrenmitglied","honorary"]},
+  {key:"groups",label:"Gruppen",syn:["gruppen","gruppe","abteilung","mannschaft"]},
+  {key:"household",label:"Haushalt",syn:["haushalt","familie","family","household"]},
+  {key:"notes",label:"Notizen",syn:["notizen","bemerkung","bemerkungen","notes"]}
+];
+function normalizeHeader(s){
+  return String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
+}
+function guessMemberImportField(header){
+  const h=normalizeHeader(header);
+  const exact=MEMBER_IO_FIELDS.find(f=>f.syn.some(s=>normalizeHeader(s)===h));
+  if(exact)return exact.key;
+  const partial=MEMBER_IO_FIELDS.find(f=>f.syn.some(s=>h.includes(normalizeHeader(s))||normalizeHeader(s).includes(h)));
+  return partial?.key||"";
+}
+function detectCsvDelimiter(text){
+  const first=String(text||"").split(/\r?\n/).slice(0,3).join("\n");
+  const counts={";":0,",":0,"\t":0};let quote=false;
+  for(const c of first){if(c==='"')quote=!quote;else if(!quote&&Object.prototype.hasOwnProperty.call(counts,c))counts[c]++}
+  return Object.entries(counts).sort((a,b)=>b[1]-a[1])[0][0];
+}
+function parseCsvText(text){
+  const delimiter=detectCsvDelimiter(text),rows=[];let row=[],cell="",quote=false;
+  const src=String(text||"").replace(/^\uFEFF/,"");
+  for(let i=0;i<src.length;i++){
+    const c=src[i];
+    if(quote){
+      if(c==='"'&&src[i+1]==='"'){cell+='"';i++}
+      else if(c==='"')quote=false;
+      else cell+=c;
+    }else{
+      if(c==='"')quote=true;
+      else if(c===delimiter){row.push(cell);cell=""}
+      else if(c==="\n"){row.push(cell.replace(/\r$/,""));rows.push(row);row=[];cell=""}
+      else cell+=c;
+    }
+  }
+  if(cell||row.length){row.push(cell.replace(/\r$/,""));rows.push(row)}
+  const clean=rows.filter(r=>r.some(x=>String(x).trim()!==""));
+  if(!clean.length)return {headers:[],rows:[]};
+  const headers=clean[0].map((x,i)=>String(x||"").trim()||`Spalte ${i+1}`);
+  return {headers,rows:clean.slice(1)};
+}
+function zipColumnIndex(ref){
+  const letters=String(ref||"").match(/^[A-Z]+/i)?.[0]?.toUpperCase()||"A";
+  let n=0;for(const c of letters)n=n*26+(c.charCodeAt(0)-64);return n-1;
+}
+async function unzipXlsxEntries(buffer){
+  const bytes=new Uint8Array(buffer),view=new DataView(buffer);
+  let eocd=-1;
+  for(let i=bytes.length-22;i>=Math.max(0,bytes.length-66000);i--){if(view.getUint32(i,true)===0x06054b50){eocd=i;break}}
+  if(eocd<0)throw new Error("Die Excel-Datei besitzt keine gültige ZIP-Struktur.");
+  const count=view.getUint16(eocd+10,true),centralOffset=view.getUint32(eocd+16,true),decoder=new TextDecoder("utf-8"),entries=new Map();
+  let p=centralOffset;
+  for(let i=0;i<count;i++){
+    if(view.getUint32(p,true)!==0x02014b50)throw new Error("Excel-ZIP-Verzeichnis konnte nicht gelesen werden.");
+    const method=view.getUint16(p+10,true),compressedSize=view.getUint32(p+20,true),
+          nameLen=view.getUint16(p+28,true),extraLen=view.getUint16(p+30,true),commentLen=view.getUint16(p+32,true),
+          localOffset=view.getUint32(p+42,true),name=decoder.decode(bytes.slice(p+46,p+46+nameLen));
+    const localNameLen=view.getUint16(localOffset+26,true),localExtraLen=view.getUint16(localOffset+28,true),
+          dataStart=localOffset+30+localNameLen+localExtraLen,compressed=bytes.slice(dataStart,dataStart+compressedSize);
+    let data;
+    if(method===0)data=compressed;
+    else if(method===8){
+      if(typeof DecompressionStream==="undefined")throw new Error("Dieser Browser unterstützt das Entpacken von Excel-Dateien nicht. Bitte CSV verwenden oder den Browser aktualisieren.");
+      const stream=new Blob([compressed]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+      data=new Uint8Array(await new Response(stream).arrayBuffer());
+    }else throw new Error(`Nicht unterstützte Excel-Komprimierung (${method}).`);
+    entries.set(name,data);
+    p+=46+nameLen+extraLen+commentLen;
+  }
+  return entries;
+}
+function zipEntryText(entries,name){const b=entries.get(name);return b?new TextDecoder("utf-8").decode(b):""}
+async function parseXlsxFile(file){
+  const entries=await unzipXlsxEntries(await file.arrayBuffer()),parser=new DOMParser();
+  const workbookText=zipEntryText(entries,"xl/workbook.xml");
+  if(!workbookText)throw new Error("Die Excel-Arbeitsmappe enthält keine workbook.xml.");
+  const workbook=parser.parseFromString(workbookText,"application/xml"),
+        firstSheet=workbook.getElementsByTagNameNS("*","sheet")[0];
+  if(!firstSheet)throw new Error("Die Excel-Datei enthält kein Tabellenblatt.");
+  const relId=firstSheet.getAttribute("r:id")||firstSheet.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships","id");
+  const rels=parser.parseFromString(zipEntryText(entries,"xl/_rels/workbook.xml.rels"),"application/xml");
+  let target="";
+  [...rels.getElementsByTagNameNS("*","Relationship")].forEach(rel=>{if(rel.getAttribute("Id")===relId)target=rel.getAttribute("Target")||""});
+  target=target.replace(/^\/+/,"");
+  const sheetPath=target.startsWith("xl/")?target:`xl/${target}`;
+  const sheetText=zipEntryText(entries,sheetPath);
+  if(!sheetText)throw new Error("Das erste Tabellenblatt konnte nicht gelesen werden.");
+  const sharedText=zipEntryText(entries,"xl/sharedStrings.xml"),shared=[];
+  if(sharedText){
+    const sharedDoc=parser.parseFromString(sharedText,"application/xml");
+    [...sharedDoc.getElementsByTagNameNS("*","si")].forEach(si=>shared.push([...si.getElementsByTagNameNS("*","t")].map(t=>t.textContent||"").join("")));
+  }
+  const doc=parser.parseFromString(sheetText,"application/xml"),matrix=[];let maxCol=0;
+  [...doc.getElementsByTagNameNS("*","row")].forEach((rowEl,rowIndex)=>{
+    const row=[];
+    [...rowEl.getElementsByTagNameNS("*","c")].forEach(c=>{
+      const col=zipColumnIndex(c.getAttribute("r")),type=c.getAttribute("t")||"",v=c.getElementsByTagNameNS("*","v")[0]?.textContent||"";
+      let value=v;
+      if(type==="s")value=shared[Number(v)]??"";
+      else if(type==="inlineStr")value=[...c.getElementsByTagNameNS("*","t")].map(t=>t.textContent||"").join("");
+      else if(type==="b")value=v==="1"?"Ja":"Nein";
+      row[col]=value;maxCol=Math.max(maxCol,col);
+    });
+    matrix[rowIndex]=row;
+  });
+  const normalized=matrix.map(r=>Array.from({length:maxCol+1},(_,i)=>r?.[i]??"")).filter(r=>r.some(v=>String(v).trim()!==""));
+  if(!normalized.length)return {headers:[],rows:[]};
+  return {headers:normalized[0].map((x,i)=>String(x||"").trim()||`Spalte ${i+1}`),rows:normalized.slice(1)};
+}
+async function parseMemberImportFile(file){
+  if(/\.xlsx$/i.test(file.name)||file.type.includes("spreadsheetml"))return parseXlsxFile(file);
+  return parseCsvText(await file.text());
+}
+function normalizeImportDate(value){
+  const s=String(value??"").trim();if(!s)return "";
+  if(/^\d{5}(?:\.\d+)?$/.test(s)){
+    const serial=Number(s),ms=Date.UTC(1899,11,30)+Math.round(serial*86400000),d=new Date(ms);
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}-${String(d.getUTCDate()).padStart(2,"0")}`;
+  }
+  let m=s.match(/^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})$/);
+  if(m)return `${m[3]}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")}`;
+  m=s.match(/^(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})$/);
+  if(m)return `${m[1]}-${m[2].padStart(2,"0")}-${m[3].padStart(2,"0")}`;
+  return s;
+}
+function normalizeImportStatus(value){
+  const s=normalizeHeader(value);
+  if(["inaktiv","deaktiviert","inactive"].includes(s))return "inactive";
+  if(["passiv","passive"].includes(s))return "passive";
+  if(["verstorben","deceased"].includes(s))return "deceased";
+  return "active";
+}
+function importBoolean(value){
+  const s=normalizeHeader(value);return ["ja","yes","true","1","x","j"].includes(s);
+}
+function groupIdsFromImport(value){
+  const names=String(value||"").split(/[;,|]+/).map(x=>x.trim()).filter(Boolean);
+  const groups=activeRows("groups");
+  return names.map(n=>groups.find(g=>String(g.name||"").trim().toLocaleLowerCase("de-DE")===n.toLocaleLowerCase("de-DE"))?.id).filter(Boolean);
+}
+function memberImportTargetOptions(selected=""){
+  return `<option value="">Nicht importieren</option>`+MEMBER_IO_FIELDS.map(f=>`<option value="${f.key}" ${f.key===selected?"selected":""}>${esc(f.label)}</option>`).join("");
+}
+function memberImportPreviewHTML(data){
+  const preview=data.rows.slice(0,5);
+  return `<div class="member-import-preview"><table><thead><tr>${data.headers.map(h=>`<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${preview.map(row=>`<tr>${data.headers.map((_,i)=>`<td>${esc(row[i]??"")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+}
+async function startMemberImport(file){
+  const data=await parseMemberImportFile(file);
+  if(!data.headers.length||!data.rows.length)throw new Error("Die Datei enthält keine importierbaren Mitgliedsdaten.");
+  const dlg=$("#detailModal");
+  $("#detailTitle").textContent=`Mitglieder importieren · ${file.name}`;
+  $("#detailBody").innerHTML=`<div>
+    <div class="member-io-intro">${data.rows.length} Datenzeile${data.rows.length===1?"":"n"} erkannt. Ordne die Spalten den V-Planer-Feldern zu. Vor dem Import wird automatisch ein Sicherheitsbackup erstellt.</div>
+    <div class="member-import-mapping">${data.headers.map((h,i)=>`<div class="member-import-map-row"><span><b>${esc(h)}</b></span><select data-member-import-map="${i}">${memberImportTargetOptions(guessMemberImportField(h))}</select></div>`).join("")}</div>
+    <div class="switch-row"><div><b>Bestehende Mitglieder aktualisieren</b><small>Erkennung über Mitgliedsnummer, sonst Name + Geburtsdatum. Leere Importwerte überschreiben keine bestehenden Daten.</small></div><label class="switch"><input id="memberImportUpdateExisting" type="checkbox"><span></span></label></div>
+    ${memberImportPreviewHTML(data)}
+    <div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="btn primary" id="memberImportRun" type="button">Import starten</button></div>
+  </div>`;
+  dlg.showModal();
+  $("#memberImportRun").onclick=()=>runMemberImport(data,!!$("#memberImportUpdateExisting").checked,dlg);
+}
+function findImportDuplicate(obj){
+  const no=String(obj.memberNo||"").trim();
+  if(no){const m=activeRows("members").find(x=>memberNoKey(x.memberNo)===memberNoKey(no));if(m)return m}
+  const key=`${normalizeHeader(obj.firstName)}|${normalizeHeader(obj.lastName)}|${normalizeImportDate(obj.birthDate)}`;
+  if(!obj.firstName&&!obj.lastName)return null;
+  return activeRows("members").find(m=>`${normalizeHeader(m.firstName)}|${normalizeHeader(m.lastName)}|${m.birthDate||""}`===key)||null;
+}
+function buildImportObject(row,mapping){
+  const obj={};
+  mapping.forEach(({col,key})=>{if(key)obj[key]=row[col]??""});
+  return obj;
+}
+async function runMemberImport(data,updateExisting,dlg){
+  const mapping=$$("[data-member-import-map]").map(s=>({col:Number(s.dataset.memberImportMap),key:s.value})).filter(x=>x.key);
+  if(!mapping.some(x=>x.key==="firstName"||x.key==="lastName"))return alert("Bitte mindestens Vorname oder Nachname zuordnen.");
+  exportFullBackup("V-Planer_Vor_Mitgliederimport");
+  let added=0,updated=0,skipped=0,errors=0;
+  for(const row of data.rows){
+    try{
+      const raw=buildImportObject(row,mapping),first=String(raw.firstName||"").trim(),last=String(raw.lastName||"").trim();
+      if(!first&&!last){skipped++;continue}
+      const parsed={
+        memberNo:String(raw.memberNo||"").trim(),
+        firstName:first,lastName:last,
+        birthDate:normalizeImportDate(raw.birthDate),
+        status:normalizeImportStatus(raw.status),
+        entryDate:normalizeImportDate(raw.entryDate),
+        exitDate:normalizeImportDate(raw.exitDate),
+        email:String(raw.email||"").trim(),phone:String(raw.phone||"").trim(),address:String(raw.address||"").trim(),
+        honorary:importBoolean(raw.honorary),groupIds:groupIdsFromImport(raw.groups),
+        householdId:raw.household?ensureHouseholdByName(raw.household):"",
+        notes:String(raw.notes||"").trim()
+      };
+      const duplicate=findImportDuplicate(parsed);
+      if(duplicate&&!updateExisting){skipped++;continue}
+      if(duplicate){
+        const assign={};
+        ["firstName","lastName","birthDate","entryDate","exitDate","email","phone","address","notes"].forEach(k=>{if(parsed[k]!==""&&parsed[k]!=null)assign[k]=parsed[k]});
+        if(raw.status!==undefined&&String(raw.status).trim()!=="")assign.status=parsed.status;
+        if(raw.honorary!==undefined&&String(raw.honorary).trim()!=="")assign.honorary=parsed.honorary;
+        if(raw.groups!==undefined&&String(raw.groups).trim()!=="")assign.groupIds=parsed.groupIds;
+        if(raw.household!==undefined&&String(raw.household).trim()!=="")assign.householdId=parsed.householdId;
+        Object.assign(duplicate,assign);touch(duplicate);updated++;continue;
+      }
+      let memberNoValue=parsed.memberNo;
+      if(!memberNoValue||!memberNoAvailable(memberNoValue))memberNoValue=nextAvailableMemberNo();
+      db.members.push({
+        id:uid(),memberNo:memberNoValue,firstName:parsed.firstName,lastName:parsed.lastName,birthDate:parsed.birthDate,
+        status:parsed.status||"active",entryDate:parsed.entryDate||todayStr(),exitDate:parsed.exitDate||"",reentryDate:"",cancelDate:"",deceasedDate:"",
+        honorary:parsed.honorary,email:parsed.email,phone:parsed.phone,address:parsed.address,emergencyName:"",emergencyPhone:"",guardian:"",
+        familyName:"",householdId:parsed.householdId,relationships:"",groupIds:parsed.groupIds,photoData:"",extraFields:[],history:[],statusHistory:[],honors:[],notes:parsed.notes,
+        createdAt:now(),updatedAt:now()
+      });added++;
+    }catch(e){console.warn("Mitgliederimport:",e);errors++}
+  }
+  db.counters.memberNo=Number(nextAvailableMemberNo())||1;
+  dlg.close();saveLocal();
+  alert(`Mitgliederimport abgeschlossen.\n\nNeu: ${added}\nAktualisiert: ${updated}\nÜbersprungen: ${skipped}${errors?`\nFehler: ${errors}`:""}`);
+}
+$("#memberImportBtn")?.addEventListener("click",()=>$("#memberImportInput").click());
+$("#memberImportInput")?.addEventListener("change",async()=>{
+  const input=$("#memberImportInput"),file=input.files?.[0];if(!file)return;
+  try{await startMemberImport(file)}catch(e){alert(`Import nicht möglich:\n${e.message}`)}
+  finally{input.value=""}
+});
+
+function currentFilteredMembersForExport(){
+  const q=($("#memberSearch")?.value||"").toLowerCase(),f=$("#memberStatusFilter")?.value||"",hf=$("#memberHonoraryFilter")?.value||"";
+  return activeRows("members").filter(m=>
+    (!q||`${m.firstName} ${m.lastName} ${m.memberNo}`.toLowerCase().includes(q))&&
+    (!f||m.status===f)&&(!hf||(hf==="yes"?!!m.honorary:!m.honorary))
+  );
+}
+const MEMBER_EXPORT_FIELDS=[
+  ["memberNo","Mitgliedsnummer"],["firstName","Vorname"],["lastName","Nachname"],["birthDate","Geburtsdatum"],["status","Status"],
+  ["entryDate","Eintritt"],["exitDate","Austritt"],["email","E-Mail"],["phone","Telefon"],["address","Adresse"],["honorary","Ehrenmitglied"],
+  ["groups","Gruppen"],["household","Haushalt"],["notes","Notizen"]
+];
+function memberExportValue(m,key){
+  if(key==="status")return statusLabel(m.status);
+  if(key==="honorary")return m.honorary?"Ja":"Nein";
+  if(key==="groups")return effectiveGroupIdsForMember(m).map(groupName).filter(x=>x!=="—").join("; ");
+  if(key==="household")return householdById(m.householdId)?.name||m.familyName||"";
+  return m[key]??"";
+}
+function csvEscape(value){
+  let s=String(value??"");
+  if(/^[=+@-]/.test(s))s="'"+s;
+  return /[;"\r\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s;
+}
+function exportMembersCsv(rows,fields){
+  const lines=[fields.map(f=>csvEscape(f[1])).join(";"),...rows.map(m=>fields.map(f=>csvEscape(memberExportValue(m,f[0]))).join(";"))];
+  saveBrowserBlob(new Blob(["\uFEFF"+lines.join("\r\n")],{type:"text/csv;charset=utf-8"}),`V-Planer_Mitglieder_${todayStr()}.csv`);
+}
+function xmlEscape(value){return String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&apos;"}[c]))}
+function xlsxColName(index){let n=index+1,s="";while(n){const r=(n-1)%26;s=String.fromCharCode(65+r)+s;n=Math.floor((n-1)/26)}return s}
+function textBytes(s){return new TextEncoder().encode(String(s))}
+function exportMembersXlsx(rows,fields){
+  const allRows=[fields.map(f=>f[1]),...rows.map(m=>fields.map(f=>memberExportValue(m,f[0])))];
+  const sheetRows=allRows.map((row,ri)=>`<row r="${ri+1}">${row.map((v,ci)=>`<c r="${xlsxColName(ci)}${ri+1}" t="inlineStr"${ri===0?' s="1"':""}><is><t xml:space="preserve">${xmlEscape(v)}</t></is></c>`).join("")}</row>`).join("");
+  const cols=`<cols>${fields.map((f,ci)=>`<col min="${ci+1}" max="${ci+1}" width="${["address","notes"].includes(f[0])?32:["email","groups"].includes(f[0])?24:18}" customWidth="1"/>`).join("")}</cols>`;
+  const sheet=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>${cols}<sheetData>${sheetRows}</sheetData></worksheet>`;
+  const entries=[
+    {name:"[Content_Types].xml",data:textBytes(`<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`)},
+    {name:"_rels/.rels",data:textBytes(`<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`)},
+    {name:"xl/workbook.xml",data:textBytes(`<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Mitglieder" sheetId="1" r:id="rId1"/></sheets></workbook>`)},
+    {name:"xl/_rels/workbook.xml.rels",data:textBytes(`<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`)},
+    {name:"xl/styles.xml",data:textBytes(`<?xml version="1.0" encoding="UTF-8"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/><family val="2"/></font><font><b/><color rgb="FF123B62"/><sz val="11"/><name val="Calibri"/><family val="2"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFDDEBF7"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`)},
+    {name:"xl/worksheets/sheet1.xml",data:textBytes(sheet)}
+  ];
+  saveBrowserBlob(buildStoreZip(entries),`V-Planer_Mitglieder_${todayStr()}.xlsx`);
+}
+function openMemberExport(){
+  const dlg=$("#detailModal");
+  $("#detailTitle").textContent="Mitglieder exportieren";
+  $("#detailBody").innerHTML=`<div>
+    <div class="member-io-intro">Exportiere die Mitgliederliste als CSV oder echte Excel-Datei (.xlsx). Felder und Datenumfang können ausgewählt werden.</div>
+    <div class="form-grid">
+      <label>Format<select id="memberExportFormat"><option value="xlsx">Excel (.xlsx)</option><option value="csv">CSV (.csv)</option></select></label>
+      <label>Umfang<select id="memberExportScope"><option value="all">Alle nicht gelöschten Mitglieder</option><option value="filtered">Aktuelle Filter/Suche</option></select></label>
+      <div class="form-section">Felder</div>
+      <div class="member-export-fields full">${MEMBER_EXPORT_FIELDS.map(([key,label])=>`<label class="member-export-field"><input type="checkbox" data-member-export-field="${key}" checked> ${esc(label)}</label>`).join("")}</div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="btn primary" id="memberExportRun" type="button">Exportieren</button></div>
+  </div>`;
+  dlg.showModal();
+  $("#memberExportRun").onclick=()=>{
+    const selectedKeys=new Set($$("[data-member-export-field]:checked").map(x=>x.dataset.memberExportField));
+    const fields=MEMBER_EXPORT_FIELDS.filter(f=>selectedKeys.has(f[0]));
+    if(!fields.length)return alert("Bitte mindestens ein Feld auswählen.");
+    const rows=$("#memberExportScope").value==="filtered"?currentFilteredMembersForExport():activeRows("members");
+    if(!rows.length)return alert("Für den gewählten Umfang gibt es keine Mitglieder.");
+    if($("#memberExportFormat").value==="csv")exportMembersCsv(rows,fields);else exportMembersXlsx(rows,fields);
+    dlg.close();
+  };
+}
+$("#memberExportBtn")?.addEventListener("click",openMemberExport);
+
+/* Enhance link buttons with relationship counts after every render. */
+function decorateLinkButtons(){
+  $$("[data-manage-links]").forEach(btn=>{
+    const type=btn.dataset.manageLinks,id=btn.dataset.linkId,count=type&&id?relatedRecordCount(type,id):0;
+    if(count&&/Verknüpf/.test(btn.textContent)&&!/\(\d+\)/.test(btn.textContent))btn.textContent=`${btn.textContent.replace(/\s*\(\d+\)$/,"")} (${count})`;
+  });
+}
 
 applyUiScale();
 
