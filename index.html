@@ -5,8 +5,8 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/>
 <meta content="#075aa8" name="theme-color"/>
-<meta content="V-Planer – Vereinsplanung, Mitglieder, Gruppen, Projekte und Dokumente." name="description"/>
-<title>V-Planer · Dein Verein. Einfach organisiert.</title>
+<meta content="V-Planer 2.0.0 – Vereinsplanung, Mitglieder, Gruppen, Kalender und Finanzübersicht." name="description"/>
+<title>V-Planer 2.0.0 · Dein Verein. Einfach organisiert.</title>
 <link href="manifest.webmanifest" rel="manifest"/>
 <link href="icons/icon-192.png" rel="icon"/>
 <link href="styles.css" rel="stylesheet"/>
@@ -28,7 +28,7 @@
 <div class="nav-section">Planung</div>
 <button class="nav-btn" data-view="tasks">✅ <span>Aufgaben</span></button>
 <button class="nav-btn" data-view="projects">📁 <span>Projekte</span></button>
-<button class="nav-btn" data-view="kanban">▦ <span>Kanban</span></button>
+
 <button class="nav-btn" data-view="calendar">📅 <span>Kalender</span></button>
 <button class="nav-btn" data-view="year">🗓 <span>Vereinsjahr</span></button>
 <button class="nav-btn" data-view="archive">🗄️ <span>Archiv</span></button>
@@ -36,24 +36,20 @@
 <div class="nav-section">Verein</div>
 <button class="nav-btn" data-view="members">👥 <span>Mitglieder</span></button>
 <button class="nav-btn" data-view="groups">🌳 <span>Gruppen &amp; Funktionen</span></button>
-<button class="nav-btn" data-view="meetings">📝 <span>Sitzungen &amp; Beschlüsse</span></button>
+
 </div>
 <div class="nav-module" data-module="finance">
 <div class="nav-section">Finanzen</div>
-<button class="nav-btn" data-view="finance-kasse">💶 <span>KassenKumpel</span></button>
+<button class="nav-btn" data-view="finance-kasse">💶 <span>Finanzen</span></button>
 <button class="nav-btn" data-view="finance-fines">⚠️ <span>Strafen</span></button>
 </div>
-<div class="nav-module" data-module="documents">
-<div class="nav-section">Dokumente</div>
-<button class="nav-btn" data-view="documents">📄 <span>Dokumente &amp; Bilder</span></button>
-<button class="nav-btn" data-view="knowledge">📚 <span>Vereinswissen</span></button>
-</div>
+
 <div class="nav-section">System</div>
 <button class="nav-btn" data-view="trash">🗑️ <span>Papierkorb</span><span class="nav-count" id="trashNavCount"></span></button>
 <button class="nav-btn" data-view="settings">⚙️ <span>Einstellungen</span></button>
 </nav>
 <div class="sidebar-footer">
-<small>V-Planer Cloud · 1.8.0</small>
+<small>V-Planer · 2.0.0</small>
 </div>
 </aside>
 <main class="main">
@@ -117,15 +113,22 @@
 <div class="card-body" id="dashboardEvents"></div>
 </div>
 <div class="card">
-<div class="card-head"><h2>Speicher &amp; Synchronisation</h2><button class="link-btn" data-settings-jump="sync" type="button">Einstellungen</button></div>
-<div class="card-body" id="dashboardStorage"></div>
+<div class="card-head"><h2>Google Synchronisation</h2></div>
+<div class="card-body" id="dashboardStorage"><div class="dashboard-sync-box">
+<div class="dashboard-sync-lines" id="dashboardSyncLines"></div>
+<button class="btn primary dashboard-sync-action" id="dashboardSyncBtn" type="button">↻ Alles synchronisieren</button>
+<small class="muted">Drive und Google Kalender werden gemeinsam über diesen Bereich gesteuert.</small>
+</div></div>
 </div>
 </div>
 </section>
 <section class="view" id="view-tasks">
-<div class="toolbar">
+<div class="toolbar"><div aria-label="Aufgabenansicht" class="task-view-toggle" role="group">
+<button class="btn secondary active" id="taskListModeBtn" type="button">Liste</button>
+<button class="btn secondary" id="taskKanbanModeBtn" type="button">Kanban</button>
+</div>
 <input aria-label="Aufgaben durchsuchen" class="search" id="taskSearch" placeholder="Aufgaben durchsuchen …"/>
-<select aria-label="Aufgaben nach Status filtern" id="taskStatusFilter"><option value="">Alle Status</option><option value="open">Offen</option><option value="doing">In Arbeit</option><option value="wait">Warten</option><option value="done">Erledigt</option></select>
+<select aria-label="Aufgaben nach Status filtern" id="taskStatusFilter"><option value="">Alle Status</option><option value="open">Offen</option><option value="doing">In Bearbeitung</option><option value="done">Erledigt</option></select>
 <div class="task-sort-mobile">
 <select aria-label="Aufgaben sortieren" id="taskSortSelect">
 <option value="due">Fälligkeit</option>
@@ -139,7 +142,7 @@
 </div>
 <button class="btn primary" data-action="new-task">+ Aufgabe</button>
 </div>
-<div class="card table-card"><div class="table-wrap"><table class="table task-table"><thead><tr>
+<div id="tasksListPanel"><div class="card table-card"><div class="table-wrap"><table class="table task-table"><thead><tr>
 <th aria-sort="none"><button class="table-sort" data-task-sort="title" type="button">Aufgabe</button></th>
 <th aria-sort="none"><button class="table-sort" data-task-sort="project" type="button">Projekt</button></th>
 <th aria-sort="none"><button class="table-sort" data-task-sort="group" type="button">Gruppe</button></th>
@@ -147,25 +150,32 @@
 <th aria-sort="none"><button class="table-sort" data-task-sort="priority" type="button">Priorität</button></th>
 <th aria-sort="none"><button class="table-sort" data-task-sort="status" type="button">Status</button></th>
 <th>Aktionen</th>
-</tr></thead><tbody id="taskTable"></tbody></table></div></div>
-</section>
+</tr></thead><tbody id="taskTable"></tbody></table></div></div></div>
+<div hidden="" id="tasksKanbanPanel"><div class="board" id="kanbanBoard"></div></div></section>
 <section class="view" id="view-projects">
 <div class="toolbar">
 <input aria-label="Projekte durchsuchen" class="search" id="projectSearch" placeholder="Projekte durchsuchen …"/>
-<select aria-label="Projekte nach Status filtern" id="projectStatusFilter"><option value="">Alle Status</option><option value="planned">Geplant</option><option value="active">Aktiv</option><option value="paused">Pausiert</option><option value="closed">Abgeschlossen</option></select>
+<select aria-label="Projekte nach Status filtern" id="projectStatusFilter"><option value="">Alle Status</option><option value="planned">Geplant</option><option value="active">Aktiv</option><option value="closed">Abgeschlossen</option></select>
 <button class="btn primary" data-action="new-project">+ Projekt</button>
 </div>
 <div class="cards-grid" id="projectGrid"></div>
 </section>
-<section class="view" id="view-kanban"><div class="board" id="kanbanBoard"></div></section>
+
 <section class="view" id="view-calendar">
-<div class="toolbar calendar-view-toolbar">
+<div class="toolbar calendar-view-toolbar"><div class="calendar-toolbar-main">
 <div aria-label="Kalenderansicht" class="calendar-mode-toggle" role="group">
-<button class="btn secondary" data-calendar-mode="agenda" id="calendarAgendaMode" type="button">☷ Agenda</button>
-<button class="btn secondary" data-calendar-mode="month" id="calendarMonthMode" type="button">▦ Monat</button>
+<button class="btn secondary active" data-calendar-mode="month" type="button">Monat</button>
+<button class="btn secondary" data-calendar-mode="week" type="button">Woche</button>
+<button class="btn secondary" data-calendar-mode="day" type="button">Tag</button>
+<button class="btn secondary" data-calendar-mode="list" type="button">Liste</button>
+</div>
+<div class="calendar-filter-row">
+<select aria-label="Kalendertyp filtern" id="calendarTypeFilter"><option value="">Alle Einträge</option><option value="event">Termine</option><option value="birthday">Geburtstage</option><option value="jubilee">Jubiläen</option></select>
+<select aria-label="Kalender nach Projekt filtern" id="calendarProjectFilter"><option value="">Alle Projekte</option></select>
+<select aria-label="Kalender nach Gruppe filtern" id="calendarGroupFilter"><option value="">Alle Gruppen</option></select>
 </div>
 <button class="btn primary" data-action="new-event">+ Termin</button>
-</div>
+</div></div>
 <div class="calendar-layout">
 <div class="card calendar-card">
 <div class="calendar-head">
@@ -176,13 +186,8 @@
 </div>
 <button aria-label="Nächster Monat" class="calendar-nav-btn" id="nextMonth" type="button">›</button>
 </div>
-<div aria-label="Kalenderlegende" class="calendar-legend">
-<span><i class="legend-dot event-dot"></i>Termin</span>
-<span><i class="legend-dot task-dot"></i>Aufgabe</span>
-<span><i class="legend-dot project-dot"></i>Projekt</span>
-<span><i class="legend-dot birthday-dot"></i>Geburtstag</span>
-</div>
-<div class="calendar-grid" id="calendarGrid"></div>
+<div aria-label="Kalenderlegende" class="calendar-legend"><span><i class="legend-dot event-dot"></i>Termin</span><span><i class="legend-dot birthday-dot"></i>Geburtstag</span><span><i class="legend-dot jubilee-dot"></i>Jubiläum</span></div>
+<div class="calendar-grid" id="calendarGrid"></div><div class="calendar-week-v2" hidden="" id="calendarWeek"></div><div class="calendar-day-v2" hidden="" id="calendarDay"></div>
 <div class="calendar-agenda" id="calendarAgenda"></div>
 </div>
 <div class="card calendar-side-card"><div class="card-head"><h2>Nächste Einträge</h2></div><div class="card-body" id="calendarSideList"></div></div>
@@ -198,49 +203,35 @@
 </div>
 <button aria-label="Nächstes Jahr" class="calendar-nav-btn" id="nextYear" type="button">›</button>
 </div>
-<div aria-label="Legende Vereinsjahr" class="calendar-legend year-legend">
-<span><i class="legend-dot event-dot"></i>Termin</span>
-<span><i class="legend-dot task-dot"></i>Aufgabe</span>
-<span><i class="legend-dot project-dot"></i>Projekt</span>
-<span><i class="legend-dot birthday-dot"></i>Geburtstag</span>
-<span><i class="legend-dot jubilee-dot"></i>Vereinsjubiläum</span>
-</div>
+<div aria-label="Legende Vereinsjahr" class="calendar-legend year-legend"><span><i class="legend-dot event-dot"></i>Termin</span><span><i class="legend-dot project-dot"></i>Projekt</span><span><i class="legend-dot birthday-dot"></i>Geburtstag</span><span><i class="legend-dot jubilee-dot"></i>Jubiläum</span></div>
 <small class="muted">Alle datumsbezogenen Einträge des gewählten Jahres werden angezeigt. Ein Klick öffnet den zugehörigen Datensatz.</small>
+<div class="year-summary-v2" id="yearSummary"></div>
+<div aria-label="Vereinsjahr filtern" class="year-filter-v2" role="group">
+<button class="btn secondary active" data-year-filter="" type="button">Alle</button>
+<button class="btn secondary" data-year-filter="event" type="button">Termine</button>
+<button class="btn secondary" data-year-filter="project" type="button">Projekte</button>
+<button class="btn secondary" data-year-filter="birthday" type="button">Geburtstage</button>
+<button class="btn secondary" data-year-filter="jubilee" type="button">Jubiläen</button>
 </div>
+<label class="year-note-box"><b>Jahresnotiz</b><textarea id="yearNote" placeholder="Was ist in diesem Vereinsjahr besonders wichtig?" rows="3"></textarea><button class="btn secondary" id="saveYearNoteBtn" type="button">Jahresnotiz speichern</button></label></div>
 <div class="year-grid" id="yearGrid"></div>
 </section>
-<section class="view" id="view-archive">
-<div class="archive-summary">
-<div class="card archive-metric"><span>Archivierte Aufgaben</span><b id="archiveTaskCount">0</b><small>Erledigte Aufgaben</small></div>
-<div class="card archive-metric"><span>Archivierte Projekte</span><b id="archiveProjectCount">0</b><small>Abgeschlossene Projekte</small></div>
+<section class="view" id="view-archive"><div class="toolbar"><input aria-label="Archiv durchsuchen" class="search" id="archiveSearch" placeholder="Archiv durchsuchen …"/><select aria-label="Archiv nach Jahr filtern" id="archiveYearFilter"><option value="">Alle Jahre</option></select></div>
+<div class="archive-summary"><div class="card archive-metric"><span>Archivierte Projekte</span><b id="archiveProjectCount">0</b><small>Historisch abgelegte Projekte</small></div></div>
+<div class="archive-years" id="archiveProjectsByYear"></div></section>
+<section class="view finance-view" data-module="finance" id="view-finance-kasse"><div class="finance-readonly-head card">
+<div><h2>Finanzübersicht</h2><p>Schreibgeschützte Kennzahlen aus dem lokalen KassenKumpel des Kassenwarts.</p><small id="financeDataState">Noch keine KassenKumpel-Daten importiert.</small></div>
+<div class="finance-import-actions"><button class="btn primary" id="financeImportBtn" type="button">KassenKumpel-Daten einlesen</button><input accept=".json,application/json" hidden="" id="financeImportInput" type="file"/></div>
 </div>
-<div class="archive-grid">
-<div class="card">
-<div class="card-head"><div><h2>Aufgabenarchiv</h2><small class="muted">Erledigte Aufgaben, die nicht mehr in den aktiven Listen erscheinen.</small></div></div>
-<div class="card-body archive-list" id="archiveTasks"></div>
+<div class="finance-metrics finance-readonly-metrics">
+<div class="card finance-metric"><span>Gesamtbestand</span><b id="financeTotal">—</b><small>Alle Konten</small></div>
+<div class="card finance-metric"><span>Bank</span><b id="financeBank">—</b><small>Vereinskonto</small></div>
+<div class="card finance-metric"><span>Barkasse</span><b id="financeCash">—</b><small>Bargeldbestand</small></div>
+<div class="card finance-metric"><span>Einnahmen</span><b id="financeIncome">—</b><small id="financeIncomeYear">Laufendes Geschäftsjahr</small></div>
+<div class="card finance-metric"><span>Ausgaben</span><b id="financeExpenses">—</b><small id="financeExpensesYear">Laufendes Geschäftsjahr</small></div>
+<div class="card finance-metric"><span>Jahresergebnis</span><b id="financeResult">—</b><small id="financeResultYear">Einnahmen − Ausgaben</small></div>
 </div>
-<div class="card">
-<div class="card-head"><div><h2>Projektarchiv</h2><small class="muted">Abgeschlossene Projekte inklusive ihrer Historie.</small></div></div>
-<div class="card-body archive-list" id="archiveProjects"></div>
-</div>
-</div>
-</section>
-<section class="view finance-view" data-module="finance" id="view-finance-kasse">
-<div class="finance-kassen-head card">
-<div class="finance-kassen-brand">
-<img alt="KassenKumpel" src="finance/kassenkumpel/assets/kassenkumpel-logo-192.png"/>
-<div>
-<h2>KassenKumpel</h2>
-<p>Kassenbuch, Barkasse, Belege, Kassenabschlüsse, Auswertungen und KassenKumpel-Einstellungen im V-Planer-Finanzbereich.</p>
-<small id="kassenSyncState">KassenKumpel wird geladen …</small>
-</div>
-</div>
-<div class="finance-kassen-version">integriert · 1.1.1</div>
-</div>
-<div class="finance-frame-card card">
-<iframe class="finance-frame" id="kassenKumpelFrame" loading="lazy" src="finance/kassenkumpel/index.html?embed=1" title="KassenKumpel"></iframe>
-</div>
-</section>
+<div class="card"><div class="card-head"><h2>Finanzstände</h2><small class="muted">Importierte Snapshots – keine Buchungen oder Belege.</small></div><div class="card-body" id="financeHistory"></div></div></section>
 <section class="view finance-view" data-module="finance" id="view-finance-fines">
 <div class="finance-metrics">
 <div class="card finance-metric"><span>Offener Betrag</span><b id="fineOpenAmount">0,00 €</b><small>Noch nicht bezahlt</small></div>
@@ -276,7 +267,7 @@
 <section class="view" id="view-members">
 <div class="toolbar">
 <input aria-label="Mitglieder durchsuchen" class="search" id="memberSearch" placeholder="Mitglieder suchen …"/>
-<select aria-label="Mitglieder nach Status filtern" id="memberStatusFilter"><option value="">Alle Status</option><option value="active">Aktiv</option><option value="inactive">Deaktiviert</option><option value="passive">Passiv</option><option value="deceased">Verstorben</option></select>
+<select aria-label="Mitglieder nach Status filtern" id="memberStatusFilter"><option value="">Alle Status</option><option value="active">Aktiv</option><option value="passive">Passiv</option><option value="deceased">Verstorben</option><option value="exited">Ausgetreten</option></select>
 <select aria-label="Ehrenmitglieder filtern" id="memberHonoraryFilter"><option value="">Alle Mitglieder</option><option value="yes">Nur Ehrenmitglieder</option><option value="no">Ohne Ehrenmitglieder</option></select>
 <div class="member-sort-mobile">
 <select aria-label="Mitglieder sortieren" id="memberSortSelect">
@@ -285,13 +276,13 @@
 <option value="status">Status</option>
 <option value="age">Alter</option>
 <option value="groups">Gruppen</option>
-<option value="next">Nächster Termin</option>
+
 </select>
 <button class="btn secondary" id="memberSortDir" type="button">↑ Aufsteigend</button>
 </div>
 <button class="btn secondary" id="memberImportBtn" type="button">⇧ Import</button>
 <button class="btn secondary" id="memberExportBtn" type="button">⇩ Export</button>
-<button class="btn secondary" id="householdManagerBtn" type="button">⌂ Haushalte</button>
+
 <input accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden="" id="memberImportInput" type="file"/>
 <button class="btn primary" data-action="new-member">+ Mitglied</button>
 </div>
@@ -302,7 +293,7 @@
 <th aria-sort="none"><button class="table-sort" data-member-sort="status" type="button">Status</button></th>
 <th aria-sort="none"><button class="table-sort" data-member-sort="age" type="button">Alter</button></th>
 <th aria-sort="none"><button class="table-sort" data-member-sort="groups" type="button">Gruppen</button></th>
-<th aria-sort="none"><button class="table-sort" data-member-sort="next" type="button">Nächster Termin</button></th>
+
 </tr></thead><tbody id="memberTable"></tbody></table></div></div>
 <div class="card member-detail"><div class="card-head"><h2>Mitglied</h2></div><div class="card-body" id="memberDetail"></div></div>
 </div>
@@ -313,8 +304,8 @@
 <button class="btn secondary" id="newFunctionBtn">+ Funktion</button>
 </div>
 <div class="group-layout">
-<div class="card"><div class="card-head"><h2>Gruppenstruktur</h2></div><div class="card-body tree" id="groupTree"></div></div>
-<div class="card"><div class="card-head"><h2 id="groupDetailTitle">Gruppendetails</h2><div class="head-actions"><button aria-label="Verknüpfungen der Gruppe öffnen" class="link-clip-btn" id="linkGroupBtn" title="Verknüpfungen" type="button">📎</button><button class="btn tiny secondary" id="editGroupBtn">Bearbeiten</button><button class="btn tiny danger" id="deleteGroupBtn">Löschen</button></div></div><div class="card-body" id="groupDetail"></div></div>
+<div class="card"><div class="card-head"><h2>Gruppen</h2></div><div class="card-body tree" id="groupTree"></div></div>
+<div class="card"><div class="card-head"><h2 id="groupDetailTitle">Gruppendetails</h2><div class="head-actions"><button class="btn tiny secondary" id="editGroupBtn">Bearbeiten</button><button class="btn tiny danger" id="deleteGroupBtn">Löschen</button></div></div><div class="card-body" id="groupDetail"></div></div>
 </div><div class="card function-overview-card">
 <div class="card-head function-overview-head">
 <div>
@@ -341,7 +332,7 @@
 </div>
 </div>
 </section>
-<section class="view" id="view-meetings">
+<section aria-hidden="true" class="view legacy-removed" id="view-meetings">
 <div class="toolbar">
 <button class="btn primary" data-action="new-meeting">+ Sitzung</button>
 <button class="btn secondary" data-new-folder="meetings" type="button">+ Ordner</button>
@@ -376,7 +367,7 @@
 </div>
 </div>
 </section>
-<section class="view" id="view-documents">
+<section aria-hidden="true" class="view legacy-removed" id="view-documents">
 <div class="toolbar">
 <input aria-label="Dateien im aktuellen Ordner durchsuchen" class="search" id="documentSearch" placeholder="Dateien im aktuellen Ordner durchsuchen …"/>
 <button class="btn secondary" data-new-folder="documents" type="button">+ Ordner</button>
@@ -409,7 +400,7 @@
 </div>
 </div>
 </section>
-<section class="view" id="view-knowledge">
+<section aria-hidden="true" class="view legacy-removed" id="view-knowledge">
 <div class="toolbar">
 <input aria-label="Vereinswissen im aktuellen Ordner durchsuchen" class="search" id="knowledgeSearch" placeholder="Vereinswissen im aktuellen Ordner durchsuchen …"/>
 <button class="btn primary" data-action="new-knowledge">+ Eintrag</button>
@@ -456,12 +447,12 @@
 <option value="members">Mitglieder</option>
 <option value="groups">Gruppen</option>
 <option value="functions">Funktionen</option>
-<option value="meetings">Sitzungen &amp; Beschlüsse</option>
-<option value="knowledge">Vereinswissen</option>
-<option value="documents">Dokumente &amp; Bilder</option>
-<option value="folders">Ordner</option>
+
+
+
+
 <option value="fines">Strafen</option>
-<option value="households">Haushalte</option>
+
 </select>
 <button class="btn danger" id="emptyTrashBtn" type="button">Papierkorb leeren</button>
 </div>
@@ -471,7 +462,23 @@
 </div>
 <div class="trash-list" id="trashList"></div>
 </section>
-<section class="view" id="view-settings"><div class="settings-shell"><aside aria-label="Einstellungsbereiche" class="card settings-section-nav">
+<section class="view" id="view-settings"><div class="settings-v2" id="settingsV2">
+<aside aria-label="Einstellungsbereiche" class="card settings-v2-nav">
+<button class="active" data-settings-v2="general" type="button">Allgemein</button>
+<button data-settings-v2="club" type="button">Verein</button>
+<button data-settings-v2="appearance" type="button">Darstellung</button>
+<button data-settings-v2="backup" type="button">Daten &amp; Sicherung</button>
+<button data-settings-v2="advanced" type="button">Erweitert</button>
+</aside>
+<div class="settings-v2-main">
+<section class="settings-v2-panel active" data-settings-v2-panel="general"><div class="card setting-card"><h2>Allgemein</h2><label>Aufgaben standardmäßig öffnen als<select id="v2TaskDefault"><option value="list">Liste</option><option value="kanban">Kanban</option></select></label><label>Kalender standardmäßig öffnen als<select id="v2CalendarDefault"><option value="month">Monat</option><option value="week">Woche</option><option value="day">Tag</option><option value="list">Liste</option></select></label><p class="setting-help">Google Drive und Google Kalender werden ausschließlich über die Übersicht verbunden und synchronisiert.</p></div></section>
+<section class="settings-v2-panel" data-settings-v2-panel="club"><div class="card setting-card"><h2>Verein</h2><label>Vereinsname<input id="v2ClubName"/></label><label>Kurzname<input id="v2ClubShortName"/></label><label>Gründungsdatum<input id="v2ClubFounded" type="date"/></label><label>E-Mail<input id="v2ClubEmail" type="email"/></label><label>Telefon<input id="v2ClubPhone"/></label><label>Straße / Hausnummer<input id="v2ClubStreet"/></label><div class="form-grid"><label>PLZ<input id="v2ClubZip"/></label><label>Ort<input id="v2ClubCity"/></label></div></div></section>
+<section class="settings-v2-panel" data-settings-v2-panel="appearance"><div class="card setting-card"><h2>Darstellung</h2><label>Erscheinungsbild<select id="v2Appearance"><option value="system">System</option><option value="light">Hell</option><option value="dark">Dunkel</option></select></label><label>Oberflächengröße <b id="v2ScaleLabel">100%</b><input id="v2Scale" max="125" min="80" step="5" type="range"/></label><button class="btn secondary" id="v2ScaleReset" type="button">Auf 100 % zurücksetzen</button></div></section>
+<section class="settings-v2-panel" data-settings-v2-panel="backup"><div class="card setting-card"><h2>Daten &amp; Sicherung</h2><p class="setting-help">Vollständigen strukturierten Datenbestand lokal sichern oder wiederherstellen.</p><div class="button-row"><button class="btn primary" id="v2BackupExport" type="button">Sicherung herunterladen</button><button class="btn secondary" id="v2BackupImport" type="button">Sicherung wiederherstellen</button></div><p class="setting-help">Die Google-Verbindung wird hier nicht verwaltet.</p></div></section>
+<section class="settings-v2-panel" data-settings-v2-panel="advanced"><div class="card setting-card"><h2>Erweitert</h2><p>V-Planer Version <b>2.0.0</b></p><p class="setting-help">Entfernte Altbereiche bleiben bei einer Migration intern erhalten, werden aber nicht mehr in der normalen Oberfläche angeboten.</p><button class="btn secondary" id="v2DisconnectGoogle" type="button">Google-Verbindungen auf diesem Gerät trennen</button></div></section>
+<div class="settings-save"><button class="btn primary" id="v2SaveSettings" type="button">Einstellungen speichern</button></div>
+</div>
+</div><div class="settings-shell settings-legacy-hidden"><aside aria-label="Einstellungsbereiche" class="card settings-section-nav">
 <div class="settings-nav-head"><div><b>Einstellungen</b><small>Bereich auswählen</small></div><button aria-label="Einstellungsmenü einklappen" id="settingsNavCollapse" title="Einstellungsmenü einklappen" type="button">‹</button></div>
 <nav>
 <button data-settings-section="club" type="button">🏛️ <span>Vereinsdaten</span></button>
@@ -499,7 +506,7 @@
 <h2>Vereinsdaten</h2>
 <p class="setting-help">Zentrale Stammdaten des Vereins. Diese Angaben können später für Ausweise, Dokumente, Exporte und Vorlagen verwendet werden.</p>
 </div>
-<span class="settings-version-badge">V-Planer 1.8.0</span>
+<span class="settings-version-badge">V-Planer 2.0.0</span>
 </div>
 <div class="club-data-layout">
 <section class="club-data-section club-data-brand">
@@ -697,19 +704,19 @@
 </div>
 <div class="mobile-menu-scroll">
 <div class="mobile-menu-section">Planung</div>
-<button data-view="kanban">▦ Kanban</button>
+
 <button data-view="year">🗓 Vereinsjahr</button>
 <button data-view="archive">🗄️ Archiv</button>
 <div class="mobile-menu-section" data-module="club">Verein</div>
 <button data-module="club" data-view="members">👥 Mitglieder</button>
 <button data-module="club" data-view="groups">🌳 Gruppen &amp; Funktionen</button>
-<button data-module="club" data-view="meetings">📝 Sitzungen &amp; Beschlüsse</button>
+
 <div class="mobile-menu-section" data-module="finance">Finanzen</div>
-<button data-module="finance" data-view="finance-kasse">💶 KassenKumpel</button>
+<button data-module="finance" data-view="finance-kasse">💶 Finanzen</button>
 <button data-module="finance" data-view="finance-fines">⚠️ Strafen</button>
-<div class="mobile-menu-section" data-module="documents">Dokumente</div>
-<button data-module="documents" data-view="documents">📄 Dokumente &amp; Bilder</button>
-<button data-module="documents" data-view="knowledge">📚 Vereinswissen</button>
+
+
+
 <div class="mobile-menu-section">System</div>
 <button data-view="trash">🗑️ Papierkorb <span class="mobile-trash-count" id="mobileTrashCount"></span></button>
 <button data-view="settings">⚙️ Einstellungen</button>

@@ -2880,7 +2880,7 @@ function renderFunctionOverview(){
 }
 $("#functionSearch")?.addEventListener("input",renderFunctionOverview);
 $("#functionStatusFilter")?.addEventListener("change",renderFunctionOverview);
-$("#newFunctionOverviewBtn")?.addEventListener("click",()=>openFunctionModal(null,selectedGroupId||""));
+$("#newFunctionOverviewBtn").onclick=()=>openFunctionModal(null,selectedGroupId||"");
 
 function functionRowHTML(f){ const m=byId("members",f.memberId); return `<div class="function-row"><div><b>${esc(f.title)}</b><div class="mini-meta">${esc(f.kind||"Funktion")}</div></div><div>${esc(m?memberFullName(m):"Nicht besetzt")}</div><div>${fmtDate(f.startDate)} – ${f.endDate?fmtDate(f.endDate):"offen"}</div><div><button class="action-link" data-edit-function="${f.id}">Bearbeiten</button> ${paperclipButtonHTML("function",f.id)} <button class="action-link" data-delete-function="${f.id}">Löschen</button></div></div>`; }
 $("#editGroupBtn").onclick=()=>{const g=byId("groups",selectedGroupId);if(g)openGroupModal(g)};
@@ -5962,6 +5962,582 @@ function decorateLinkButtons(){
   const groupBtn=$("#linkGroupBtn");
   if(groupBtn&&selectedGroupId){const count=relatedRecordCount("group",selectedGroupId);groupBtn.innerHTML=`📎${count?`<span>${count}</span>`:""}`;groupBtn.title=`Verknüpfungen${count?` (${count})`:""}`;}
 }
+
+/* =========================================================
+   V-PLANER 2.0.0 CONSOLIDATION
+   Uses the 1.8.0 data model for migration safety, but exposes
+   the streamlined 2.0 workflow defined for this project.
+   ========================================================= */
+const VP2_VERSION="2.0.0";
+const VP2_TASK_VIEW_KEY="v-planer-task-view-v2";
+const VP2_CAL_VIEW_KEY="v-planer-calendar-view-v2";
+let vp2YearFilter="";
+let vp2CalendarMode="month";
+
+function vp2Migrate(){
+  db.version=Math.max(Number(db.version)||0,9);
+  db.financeSnapshots=Array.isArray(db.financeSnapshots)?db.financeSnapshots:[];
+  db.settings.yearNotes=db.settings.yearNotes&&typeof db.settings.yearNotes==="object"?db.settings.yearNotes:{};
+  db.settings.taskDefaultView=["list","kanban"].includes(db.settings.taskDefaultView)?db.settings.taskDefaultView:"list";
+  db.settings.calendarDefaultView=["month","week","day","list"].includes(db.settings.calendarDefaultView)?db.settings.calendarDefaultView:"month";
+  db.settings.appearance=["system","light","dark"].includes(db.settings.appearance)?db.settings.appearance:"system";
+  db.settings.modules={...(db.settings.modules||{}),club:true,finance:true,documents:false};
+  (db.tasks||[]).forEach(t=>{if(t.status==="wait")t.status="open"});
+  (db.projects||[]).forEach(p=>{if(p.status==="paused")p.status="active"; if(p.status==="closed"&&!p.completedAt)p.completedAt=p.updatedAt||now()});
+  (db.members||[]).forEach(m=>{if(m.status==="inactive")m.status="exited"});
+  localStorage.setItem(STORAGE_KEY,JSON.stringify(db));
+}
+vp2Migrate();
+
+/* 2.0 members no longer expose household data through import/export. */
+for(const list of [MEMBER_IO_FIELDS,MEMBER_EXPORT_FIELDS]){
+  const idx=list.findIndex(x=>(Array.isArray(x)?x[0]:x.key)==="household");
+  if(idx>=0)list.splice(idx,1);
+}
+normalizeImportStatus=function(value){
+  const s=normalizeHeader(value);
+  if(["ausgetreten","ehemalig","inaktiv","deaktiviert","inactive","exited"].includes(s))return "exited";
+  if(["passiv","passive"].includes(s))return "passive";
+  if(["verstorben","deceased"].includes(s))return "deceased";
+  return "active";
+};
+
+statusLabel=function(s){return({open:"Offen",doing:"In Bearbeitung",done:"Erledigt",planned:"Geplant",active:"Aktiv",closed:"Abgeschlossen",exited:"Ausgetreten",passive:"Passiv",deceased:"Verstorben"})[s]||s};
+statusBadge=function(s){const cls=s==="done"||s==="active"||s==="closed"?"ok":s==="deceased"||s==="exited"?"gray":"low";return `<span class="badge ${cls}">${esc(statusLabel(s))}</span>`};
+paperclipButtonHTML=function(){return ""};
+decorateLinkButtons=function(){};
+groupName=function(id){if(!id)return "Gesamtverein";return recordById("groups",id)?.name||"—"};
+function vp2CurrentGroups(){return activeRows("groups").filter(g=>!g.inactiveAt)}
+groupOptions=function(selected="",excludeId=""){
+  const rows=vp2CurrentGroups().filter(g=>g.id!==excludeId);
+  const current=selected?recordById("groups",selected):null;
+  let html='<option value="">Gesamtverein</option>';
+  if(current&&!rows.some(g=>g.id===current.id))html+=`<option value="${esc(current.id)}" selected>${esc(current.name)} · inaktiv</option>`;
+  return html+rows.map(g=>`<option value="${g.id}" ${g.id===selected?"selected":""}>${esc(g.name)}</option>`).join("");
+};
+projectOptions=function(selected=""){
+  const rows=activeRows("projects").filter(p=>["planned","active"].includes(p.status));
+  const current=selected?recordById("projects",selected):null;
+  let html='<option value="">Kein Projekt</option>';
+  if(current&&!rows.some(p=>p.id===current.id))html+=`<option value="${esc(current.id)}" selected>${esc(current.name)} · ${esc(statusLabel(current.status))}</option>`;
+  return html+rows.map(p=>`<option value="${p.id}" ${p.id===selected?"selected":""}>${esc(p.name)}</option>`).join("");
+};
+pageMeta=function(view){return({dashboard:["Übersicht","Heute, diese Woche und alles Wichtige im Blick."],tasks:["Aufgaben","Liste und Kanban greifen auf dieselben Aufgaben zu."],projects:["Projekte","Vorhaben mit Aufgaben, Terminen und Notizen organisieren."],calendar:["Kalender","Echte Termine, Geburtstage und Jubiläen – keine Aufgaben."],year:["Vereinsjahr","Automatische Jahresübersicht aus Kalender, Projekten und Mitgliederdaten."],archive:["Archiv","Abgeschlossene Projekte historisch und schreibgeschützt aufbewahren."],"finance-kasse":["Finanzen","Schreibgeschützte Übersicht aus KassenKumpel."],"finance-fines":["Strafen","Strafen und Zahlungen der Vereinsmitglieder verwalten."],members:["Mitglieder","Zentrale Stammdatenquelle für Mitglieder, Geburtstage und Jubiläen."],groups:["Gruppen & Funktionen","Organisatorische Zugehörigkeit und zeitlich dokumentierte Rollen."],trash:["Papierkorb","Gelöschte Inhalte wiederherstellen oder endgültig entfernen."],settings:["Einstellungen","Globale Einstellungen für Anwendung, Verein, Darstellung und Sicherung."]})[view]||[view,""]};
+
+const vp2LegacyGo=go;
+go=function(view){
+  if(view==="kanban")view="tasks";
+  if(["meetings","documents","knowledge"].includes(view))view="dashboard";
+  vp2LegacyGo(view);
+  if(view==="tasks")vp2ApplyTaskView();
+};
+applyModuleVisibility=function(){
+  $$('[data-module="club"]').forEach(el=>el.classList.remove("module-hidden"));
+  $$('[data-module="finance"]').forEach(el=>el.classList.remove("module-hidden"));
+  $$('[data-module="documents"]').forEach(el=>el.classList.add("module-hidden"));
+  $$(".legacy-removed").forEach(el=>el.classList.add("legacy-removed"));
+};
+
+function vp2MemberCurrent(m){return m&&!["exited","deceased"].includes(m.status)}
+upcomingBirthdays=function(maxDays=7){return activeRows("members").filter(m=>vp2MemberCurrent(m)&&m.birthDate).map(m=>({...m,_days:daysToBirthday(m)})).filter(m=>m._days>=0&&m._days<=maxDays).sort((a,b)=>a._days-b._days)};
+upcomingRoundBirthdays=function(maxDays=30){return upcomingBirthdays(maxDays).map(m=>{const info=nextRecurringInfo(m.birthDate);const age=info?info.year-Number(m.birthDate.slice(0,4)):0;return {...m,_kind:"birthday",_date:info?.date||"",_age:age,_roundBirthday:isRoundBirthdayAge(age)}}).filter(m=>m._roundBirthday)};
+upcomingJubilees=function(maxDays=365){
+  const ref=new Date();
+  return activeRows("members").filter(m=>vp2MemberCurrent(m)&&m.entryDate).map(m=>{
+    const info=nextRecurringInfo(m.entryDate,ref); if(!info)return null;
+    const years=info.year-Number(m.entryDate.slice(0,4));
+    return {...m,_kind:"jubilee",_date:info.date,_days:info.days,_years:years};
+  }).filter(Boolean).filter(m=>m._days>=0&&m._days<=maxDays&&m._years>0&&isConfiguredJubilee(m._years)).sort((a,b)=>a._days-b._days);
+};
+
+renderDashboardStorage=function(){
+  const host=$("#dashboardStorage"); if(!host)return;
+  const drive=hasUsableAccessToken()?"✓ Verbunden":hasKnownDriveGrant()?"Bereit":"Nicht verbunden";
+  const cal=hasUsableCalendarToken()?"✓ Verbunden":hasKnownCalendarGrant()?"Bereit":"Nicht verbunden";
+  const driveLast=localStorage.getItem("v-planer-last-sync-v1")||db.lastSync||"";
+  const calLast=localStorage.getItem("v-planer-calendar-last-sync-v1")||"";
+  const lines=$("#dashboardSyncLines");
+  if(lines)lines.innerHTML=`<div class="sync-service-row"><b>Google Drive</b><span>${esc(drive)}</span><small>${driveLast?`Zuletzt: ${new Date(driveLast).toLocaleString("de-DE")}`:"Noch nicht synchronisiert"}</small></div><div class="sync-service-row"><b>Google Kalender</b><span>${esc(cal)}</span><small>${calLast?`Zuletzt: ${new Date(calLast).toLocaleString("de-DE")}`:"Noch nicht synchronisiert"}</small></div>`;
+  const connected=hasUsableAccessToken()&&hasUsableCalendarToken();
+  $("#driveState").textContent=connected?"● Google verbunden":(hasKnownDriveGrant()||hasKnownCalendarGrant())?"● Google bereit":"● Nur lokal";
+  $("#driveState").style.color=connected?"#2f9628":(hasKnownDriveGrant()||hasKnownCalendarGrant())?"#075aa8":"#667085";
+  const last=[driveLast,calLast].filter(Boolean).sort().pop();
+  $("#lastSync").textContent=last?`Letzte Synchronisierung ${new Date(last).toLocaleString("de-DE")}`:"Noch nicht synchronisiert";
+};
+
+renderDashboard=function(){
+  const tasks=activeRows("tasks"),projects=activeRows("projects"),members=activeRows("members");
+  const open=tasks.filter(t=>t.status!=="done");
+  const today=open.filter(t=>t.due===todayStr()).length;
+  const week=open.filter(t=>{const d=daysUntil(t.due);return d!==null&&d>=0&&d<=7}).length;
+  $("#metricOpenTasks").textContent=open.length;$("#metricTaskHint").textContent=`Heute ${today} · Woche ${week}`;
+  const activeProjects=projects.filter(p=>p.status==="active");
+  $("#metricProjects").textContent=activeProjects.length;$("#metricProjectHint").textContent=`${activeProjects.filter(p=>projectStartDate(p)).length} mit Zeitraum`;
+  $("#metricMembers").textContent=members.length;$("#metricMemberHint").textContent=`${members.filter(m=>m.status==="active").length} aktiv`;
+
+  const alertItems=[];
+  const overdue=open.filter(t=>daysUntil(t.due)<0).length;
+  if(overdue)alertItems.push({icon:"⚠",text:`${overdue} überfällige Aufgabe${overdue===1?"":"n"}`});
+  const ending=activeProjects.filter(p=>{const d=daysUntil(projectEndDate(p));return d!==null&&d>=0&&d<=db.settings.reminders.alarmDays}).length;
+  if(ending)alertItems.push({icon:"◆",text:`${ending} aktive${ending===1?"s Projekt":" Projekte"} kurz vor dem Projektende`});
+  upcomingRoundBirthdays(30).forEach(item=>{const key=personalDashboardDismissKey(item);if(!dashboardNoticeDismissed(key))alertItems.push({icon:"🎉",text:`${memberFullName(item)} wird ${item._age} Jahre`,dismissKey:key,until:item._date})});
+  upcomingJubilees(30).forEach(item=>{const key=personalDashboardDismissKey(item);if(!dashboardNoticeDismissed(key))alertItems.push({icon:"★",text:`${memberFullName(item)}: ${item._years} Jahre Vereinszugehörigkeit`,dismissKey:key,until:item._date})});
+  const alertStrip=$("#alertStrip"); alertStrip.classList.toggle("hidden",!alertItems.length); alertStrip.innerHTML=dashboardAlertHTML(alertItems);
+  $$('[data-dismiss-dashboard-alert]').forEach(btn=>btn.onclick=e=>{e.stopPropagation();dismissDashboardNotice(btn.dataset.dismissDashboardAlert,btn.dataset.dismissUntil)});
+
+  const list=open.slice().sort((a,b)=>(a.due||"9999").localeCompare(b.due||"9999")).slice(0,8);
+  $("#dashboardTasks").innerHTML=list.length?list.map(t=>`<div class="mini-row"><input type="checkbox" data-finish-task="${t.id}" aria-label="Aufgabe erledigen"><div><div class="mini-title">${esc(t.title)}</div><div class="mini-meta">${esc(projectName(t.projectId))} · ${esc(groupName(t.groupId))}</div></div><span class="badge ${reminderClass(t.due)}">${esc(dueText(t.due))}</span></div>`).join(""):`<div class="empty">Keine offenen Aufgaben.</div>`;
+  $$('[data-finish-task]').forEach(el=>el.onchange=()=>{const t=byId("tasks",el.dataset.finishTask);if(t){t.status="done";touch(t);saveLocal()}});
+
+  $("#dashboardProjects").innerHTML=activeProjects.length?activeProjects.slice().sort((a,b)=>(projectStartDate(a)||"9999").localeCompare(projectStartDate(b)||"9999")).slice(0,8).map(p=>{const st=projectTaskStats(p.id),end=projectEndDate(p);return `<button class="project-mini project-mini-button" type="button" data-dashboard-project="${p.id}"><div class="row"><div><div class="mini-title">${esc(p.name)}</div><div class="mini-meta">${esc(groupName(p.groupId))} · ${esc(projectDateRangeText(p))} · ${st.done}/${st.total} Aufgaben</div></div><span class="project-days ${projectDayClass(end)}">${end?esc(dueText(end)):"ohne Zeitraum"}</span></div><div class="progress"><span style="width:${st.progress}%"></span></div></button>`}).join(""):`<div class="empty">Keine aktiven Projekte.</div>`;
+  $$('[data-dashboard-project]').forEach(btn=>btn.onclick=()=>{const p=byId("projects",btn.dataset.dashboardProject);if(p){go("projects");showProjectDetails(p)}});
+
+  const personal=[...upcomingBirthdays(60).map(m=>{const info=nextRecurringInfo(m.birthDate);return {...m,_kind:"birthday",_date:info.date,_days:info.days,_age:info.year-Number(m.birthDate.slice(0,4))}}),...upcomingJubilees(365)].sort((a,b)=>a._days-b._days).slice(0,10);
+  $("#dashboardBirthdays").innerHTML=personal.length?personal.map(item=>`<button type="button" class="birthday-row personal-event-open" data-dashboard-member="${item.id}"><span class="person-dot">${item._kind==="jubilee"?"★":"🎂"}</span><span class="personal-event-copy"><span class="mini-title">${esc(memberFullName(item))}</span><span class="mini-meta">${esc(item._kind==="jubilee"?`${fmtDate(item._date)} · ${item._years}. Vereinsjubiläum`:`${fmtDate(item._date)} · ${item._age}. Geburtstag`)}</span></span></button>`).join(""):`<div class="empty">Keine Geburtstage oder Jubiläen vorhanden.</div>`;
+  $$('[data-dashboard-member]').forEach(btn=>btn.onclick=()=>{const m=byId("members",btn.dataset.dashboardMember);if(m){selectedMemberId=m.id;go("members");renderMembers()}});
+  const ev=activeRows("events").filter(e=>eventEndDate(e)>=todayStr()).sort((a,b)=>eventStartDate(a).localeCompare(eventStartDate(b))).slice(0,5);
+  $("#dashboardEvents").innerHTML=ev.length?ev.map(eventRowHTML).join(""):`<div class="empty">Keine kommenden Termine.</div>`;bindEventOpeners($("#dashboardEvents"));
+  renderDashboardStorage();
+};
+
+async function vp2SyncGoogleCalendarOneWay(){
+  if(calendarSyncRunning)return;
+  calendarSyncRunning=true;
+  try{
+    saveCalendarPrefs({enabled:true,syncEvents:true,syncBirthdays:false,syncTasks:false,syncProjects:false,calendarName:"V-Planer"});
+    await ensureCalendarAccess();
+    const calendarId=await ensureVPlanerGoogleCalendar();
+    const remoteItems=await listVPlanerGoogleEvents(calendarId),remoteMap=remoteVPlanerEventMap(remoteItems);
+    let created=0,updated=0,deleted=0;
+    for(const rec of db.events||[]){
+      const remote=remoteMap.get(calendarRecordKey("event",rec.id));
+      if(rec.deletedAt){if(remote&&remote.status!=="cancelled"){await deleteGoogleCalendarEvent(calendarId,remote.id);deleted++}continue}
+      if(!eventStartDate(rec))continue;
+      if(!remote||remote.status==="cancelled"){
+        const result=await writeGoogleCalendarEvent(calendarId,"event",rec,null);setCalendarSyncMarkers(rec,result.event);created++;
+      }else{
+        const body=googleCalendarBody("event",rec);
+        const localVersion=remote.extendedProperties?.private?.vPlanerUpdatedAt||"";
+        if(localVersion!==(rec.updatedAt||"")||!calendarRemoteMatchesLocal("event",rec,remote)){
+          const result=await writeGoogleCalendarEvent(calendarId,"event",rec,remote);setCalendarSyncMarkers(rec,result.event);updated++;
+        }else setCalendarSyncMarkers(rec,remote);
+      }
+    }
+    localStorage.setItem("v-planer-calendar-last-sync-v1",now());
+    localStorage.setItem(STORAGE_KEY,JSON.stringify(db));
+    return {created,updated,deleted};
+  }finally{calendarSyncRunning=false}
+}
+syncGoogleCalendar=async function(){return vp2SyncGoogleCalendarOneWay()};
+scheduleCalendarAutoSync=function(){clearTimeout(calendarSyncTimer);calendarSyncTimer=setTimeout(()=>{if(hasUsableCalendarToken())vp2SyncGoogleCalendarOneWay().then(renderDashboardStorage).catch(e=>console.warn("Kalender-Sync",e))},1600)};
+
+const vp2LegacyGoogleBody=googleCalendarBody;
+googleCalendarBody=function(type,rec){
+  const body=vp2LegacyGoogleBody(type,rec);
+  if(type==="event"&&rec.recurrence&&rec.recurrence!=="none"){
+    const freq=({daily:"DAILY",weekly:"WEEKLY",monthly:"MONTHLY",yearly:"YEARLY"})[rec.recurrence];
+    if(freq){let rule=`RRULE:FREQ=${freq}`;if(rec.recurrenceUntil)rule+=`;UNTIL=${rec.recurrenceUntil.replaceAll("-","")}T235959Z`;body.recurrence=[rule]}
+  }
+  return body;
+};
+
+async function vp2SyncAllGoogle(){
+  const buttons=[$("#syncBtn"),$("#dashboardSyncBtn")].filter(Boolean);buttons.forEach(b=>{b.disabled=true;b.textContent="↻ Synchronisierung läuft …"});
+  const errors=[];
+  try{await ensureDriveAccess();await syncDrive(false)}catch(e){errors.push(`Drive: ${e.message}`)}
+  try{await vp2SyncGoogleCalendarOneWay()}catch(e){errors.push(`Kalender: ${e.message}`)}
+  buttons.forEach(b=>{b.disabled=false;b.textContent="↻ Alles synchronisieren"});renderDashboardStorage();
+  if(errors.length)alert(`Synchronisierung teilweise fehlgeschlagen:\n\n${errors.join("\n\n")}`);
+}
+
+/* ---------- Tasks: one data set, List | Kanban ---------- */
+function vp2TaskView(){return localStorage.getItem(VP2_TASK_VIEW_KEY)||db.settings.taskDefaultView||"list"}
+function vp2ApplyTaskView(){
+  const mode=vp2TaskView(),list=$("#tasksListPanel"),kan=$("#tasksKanbanPanel");if(!list||!kan)return;
+  list.hidden=mode!=="list";kan.hidden=mode!=="kanban";
+  $("#taskListModeBtn")?.classList.toggle("active",mode==="list");$("#taskKanbanModeBtn")?.classList.toggle("active",mode==="kanban");
+  if(mode==="kanban")renderKanban();
+}
+function vp2SetTaskView(mode){localStorage.setItem(VP2_TASK_VIEW_KEY,mode);vp2ApplyTaskView()}
+taskStatusRank=function(s){return({open:1,doing:2,done:3})[s]||99};
+renderTasks=function(){
+  const q=($("#taskSearch")?.value||"").toLowerCase(),f=$("#taskStatusFilter")?.value||"";
+  const rows=sortTasks(activeRows("tasks").filter(t=>(!q||`${t.title||""} ${t.description||""} ${projectName(t.projectId)} ${groupName(t.groupId)}`.toLowerCase().includes(q))&&(!f||t.status===f)));
+  $("#taskTable").innerHTML=rows.length?rows.map(t=>`<tr><td><b>${esc(t.title)}</b>${t.description?`<div class="task-table-description">${esc(t.description)}</div>`:""}</td><td>${esc(projectName(t.projectId))}</td><td>${esc(groupName(t.groupId))}</td><td><span class="badge ${reminderClass(t.due)}">${fmtDate(t.due)} · ${esc(dueText(t.due))}</span></td><td>${priorityBadge(t.priority)}</td><td><select data-task-status="${t.id}">${["open","doing","done"].map(s=>`<option value="${s}" ${s===t.status?"selected":""}>${statusLabel(s)}</option>`).join("")}</select></td><td><button class="action-link" data-edit-task="${t.id}">Bearbeiten</button> <button class="action-link danger-text" data-delete-task="${t.id}">Löschen</button></td></tr>`).join(""):`<tr><td colspan="7" class="empty">Keine Aufgaben.</td></tr>`;
+  updateTaskSortUI();
+  $$('[data-task-status]').forEach(el=>el.onchange=()=>{const t=byId("tasks",el.dataset.taskStatus);if(t){t.status=el.value;touch(t);saveLocal()}});
+  $$('[data-edit-task]').forEach(el=>el.onclick=()=>openTaskModal(byId("tasks",el.dataset.editTask)));
+  $$('[data-delete-task]').forEach(el=>el.onclick=()=>{if(confirm("Aufgabe in den Papierkorb verschieben?")){markDeleted("tasks",el.dataset.deleteTask);saveLocal()}});
+  vp2ApplyTaskView();
+};
+renderKanban=function(){
+  const q=($("#taskSearch")?.value||"").toLowerCase(),f=$("#taskStatusFilter")?.value||"";
+  const cols=[["open","Offen"],["doing","In Bearbeitung"],["done","Erledigt"]];
+  $("#kanbanBoard").innerHTML=cols.map(([status,label])=>{let tasks=activeRows("tasks").filter(t=>t.status===status&&(!f||f===status)&&(!q||`${t.title} ${projectName(t.projectId)} ${groupName(t.groupId)}`.toLowerCase().includes(q))).sort(kanbanTaskCompare);if(status==="done")tasks=tasks.slice(0,30);return `<div class="kanban-col" data-kanban-col="${status}"><h3>${label} · ${tasks.length}</h3>${tasks.map(t=>`<div class="ticket kanban-ticket" draggable="true" data-drag-task="${t.id}"><div class="kanban-ticket-head"><strong>${esc(t.title)}</strong>${priorityBadge(t.priority)}</div><small>${esc(projectName(t.projectId))} · ${esc(groupName(t.groupId))}</small><div class="kanban-ticket-footer"><span class="kanban-due ${kanbanDueClass(t)}">${esc(kanbanDueText(t))}</span></div></div>`).join("")}${status==="done"&&activeRows("tasks").filter(t=>t.status==="done").length>30?`<div class="mini-meta">Nur die ersten 30 erledigten Aufgaben werden angezeigt.</div>`:""}</div>`}).join("");
+  $$('[data-drag-task]').forEach(el=>{el.addEventListener("dragstart",e=>e.dataTransfer.setData("text/plain",el.dataset.dragTask));el.addEventListener("click",()=>{const t=byId("tasks",el.dataset.dragTask);if(t)openTaskModal(t)})});
+  $$('[data-kanban-col]').forEach(col=>{col.addEventListener("dragover",e=>e.preventDefault());col.addEventListener("drop",e=>{e.preventDefault();const t=byId("tasks",e.dataTransfer.getData("text/plain"));if(t){t.status=col.dataset.kanbanCol;touch(t);saveLocal()}})});
+};
+openTaskModal=function(rec=null,presetProjectId=""){
+  const project=presetProjectId?recordById("projects",presetProjectId):null;
+  if(!rec&&project&&project.status==="closed")return alert("Abgeschlossene Projekte müssen zuerst wieder aktiviert werden, bevor neue Aufgaben angelegt werden können.");
+  const r=rec||{status:"open",priority:"mid",title:"",due:"",projectId:presetProjectId||"",groupId:"",description:""},fixed=!!(presetProjectId&&!rec);
+  showModal(rec?"Aufgabe bearbeiten":fixed?"Neue Projektaufgabe":"Neue Aufgabe",`<div class="form-grid">${fixed?`<div class="form-note full">Projekt: <b>${esc(projectName(presetProjectId))}</b></div>`:""}<label class="full">Aufgabe<input id="fTitle" value="${esc(r.title)}"></label><label>Fällig<input id="fDue" type="date" value="${esc(r.due||"")}"></label><label>Priorität<select id="fPriority">${[["high","Hoch"],["mid","Mittel"],["low","Niedrig"]].map(([v,l])=>`<option value="${v}" ${r.priority===v?"selected":""}>${l}</option>`).join("")}</select></label><label>Status<select id="fStatus">${["open","doing","done"].map(s=>`<option value="${s}" ${r.status===s?"selected":""}>${statusLabel(s)}</option>`).join("")}</select></label><label>Projekt<select id="fProject" ${fixed?"disabled":""}>${projectOptions(r.projectId)}</select></label><label>Gruppe<select id="fGroup">${groupOptions(r.groupId)}</select></label><div class="form-section">Notizen</div><label class="full"><textarea id="fDescription" rows="6">${esc(r.description||"")}</textarea></label></div>`,()=>{const title=$("#fTitle").value.trim();if(!title)return false;const target=rec||{id:uid(),createdAt:now()};Object.assign(target,{title,due:$("#fDue").value,priority:$("#fPriority").value,status:$("#fStatus").value,projectId:fixed?presetProjectId:$("#fProject").value,groupId:$("#fGroup").value,description:$("#fDescription").value.trim()});touch(target);if(!rec)db.tasks.push(target);saveLocal();return true});
+};
+
+/* ---------- Projects ---------- */
+function vp2CloseProject(p){
+  if(!p||p.status==="closed")return;
+  const open=projectTasks(p.id).filter(t=>!t.archivedAt&&t.status!=="done");
+  const msg=open.length?`Dieses Projekt enthält noch ${open.length} offene Aufgabe${open.length===1?"":"n"}.\n\nProjekt trotzdem abschließen?`:`Projekt „${p.name}“ abschließen?`;
+  if(!confirm(msg))return;
+  p.status="closed";p.completedAt=now();touch(p);saveLocal();
+}
+archiveProject=function(projectId){
+  const p=recordById("projects",projectId);if(!p||p.archivedAt)return false;
+  if(p.status!=="closed"){alert("Nur abgeschlossene Projekte können archiviert werden.");return false}
+  const linked=projectTasks(p.id).filter(t=>!t.deletedAt),open=linked.filter(t=>t.status!=="done");
+  if(open.length){
+    if(!confirm(`Dieses Projekt enthält noch ${open.length} offene Aufgabe${open.length===1?"":"n"}.\n\nProjekt trotzdem archivieren?`))return false;
+  }else if(!confirm(`Projekt „${p.name}“ archivieren?`))return false;
+  const stamp=now();p.archivedAt=stamp;touch(p);
+  linked.forEach(t=>{if(!t.archivedAt){t.archivedAt=stamp;t.archivedByProjectId=p.id;touch(t)}});
+  saveLocal();return true;
+};
+restoreProject=function(projectId){
+  const p=recordById("projects",projectId);if(!p||!p.archivedAt)return;
+  const answer=prompt("Projekt wiederherstellen als:\n1 = Geplant\n2 = Aktiv\n3 = Abgeschlossen","2");if(answer===null)return;
+  const status=answer==="1"?"planned":answer==="3"?"closed":"active";
+  delete p.archivedAt;p.status=status;if(status!=="closed")delete p.completedAt;else if(!p.completedAt)p.completedAt=now();touch(p);
+  allRows("tasks").filter(t=>t.archivedByProjectId===p.id).forEach(t=>{delete t.archivedAt;delete t.archivedByProjectId;touch(t)});
+  saveLocal();
+};
+function vp2ProjectEvents(projectId){return activeRows("events").filter(e=>e.projectId===projectId).sort((a,b)=>eventStartDate(a).localeCompare(eventStartDate(b)))}
+function vp2ProjectNextEvent(projectId){return vp2ProjectEvents(projectId).filter(e=>eventEndDate(e)>=todayStr())[0]||null}
+function vp2MoveProjectToTrash(p){
+  if(!p||p.deletedAt)return;
+  const batch=`project-${p.id}-${Date.now()}`;
+  markDeleted("projects",p.id,{trashBatchId:batch,trashRootType:"project",trashRootId:p.id});
+  projectTasks(p.id).filter(t=>!t.deletedAt).forEach(t=>markDeleted("tasks",t.id,{trashBatchId:batch,trashRootType:"project",trashRootId:p.id}));
+  saveLocal();
+}
+function vp2ProjectTabButton(tab,label,active=false){return `<button type="button" class="btn secondary ${active?"active":""}" data-project-detail-tab="${tab}">${label}</button>`}
+function showProjectDetails(p){
+  const current=recordById("projects",p?.id);if(!current)return;
+  const dlg=$("#detailModal"),readonly=!!current.archivedAt||current.status==="closed",st=projectTaskStats(current.id),tasks=projectTasks(current.id),events=vp2ProjectEvents(current.id),next=vp2ProjectNextEvent(current.id);
+  $("#detailTitle").textContent=current.name||"Projekt";
+  $("#detailBody").innerHTML=`<div class="project-detail-v2"><div class="project-detail-top"><div>${statusBadge(current.status)} ${current.archivedAt?'<span class="badge gray">Archiviert</span>':''}<div class="mini-meta">${esc(projectDateRangeText(current))} · ${esc(groupName(current.groupId))}</div></div><div class="project-detail-actions"><button class="btn secondary" id="projectDetailEdit" type="button" ${current.archivedAt?"disabled":""}>Bearbeiten</button>${current.status!=="closed"&&!current.archivedAt?'<button class="btn primary" id="projectDetailClose" type="button">Projekt abschließen</button>':''}${current.status==="closed"&&!current.archivedAt?'<button class="btn primary" id="projectDetailArchive" type="button">Archivieren</button>':''}</div></div><div class="project-detail-tabs">${vp2ProjectTabButton("overview","Übersicht",true)}${vp2ProjectTabButton("tasks","Aufgaben")}${vp2ProjectTabButton("events","Termine")}${vp2ProjectTabButton("notes","Notizen")}</div><div id="projectDetailPanel"></div></div>`;
+  const renderTab=tab=>{
+    $$('[data-project-detail-tab]').forEach(b=>b.classList.toggle("active",b.dataset.projectDetailTab===tab));
+    const panel=$("#projectDetailPanel");
+    if(tab==="overview")panel.innerHTML=`<div class="project-detail-grid"><div class="detail-box full-detail"><b>Beschreibung</b>${esc(current.description||"Keine Beschreibung hinterlegt.")}</div><div class="detail-box"><b>Fortschritt</b>${st.total?`${st.done} von ${st.total} Aufgaben · ${st.progress}%`:"Noch keine Aufgaben vorhanden"}</div><div class="detail-box"><b>Nächster Termin</b>${next?`${esc(next.title)} · ${esc(eventDateRangeText(next))}`:"Kein kommender Termin"}</div><div class="detail-box"><b>Offene Aufgaben</b>${st.open}</div><div class="detail-box"><b>Termine</b>${events.length}</div></div>`;
+    if(tab==="tasks")panel.innerHTML=`<div class="project-detail-section-head"><b>Projektaufgaben</b>${!readonly?'<button class="btn tiny primary" id="projectDetailAddTask" type="button">+ Aufgabe</button>':''}</div><div>${tasks.length?tasks.map(t=>`<div class="project-detail-row">${current.archivedAt?`<div class="project-detail-row-main"><b>${esc(t.title)}</b><small>${esc(statusLabel(t.status))} · ${t.due?fmtDate(t.due):"ohne Fälligkeit"}</small></div>`:`<button class="project-detail-row-main" data-project-detail-task="${t.id}" type="button"><b>${esc(t.title)}</b><small>${esc(statusLabel(t.status))} · ${t.due?fmtDate(t.due):"ohne Fälligkeit"}</small></button>`}</div>`).join(""):'<div class="empty">Keine Aufgaben.</div>'}</div>`;
+    if(tab==="events")panel.innerHTML=`<div class="project-detail-section-head"><b>Projekttermine</b>${!readonly?'<button class="btn tiny primary" id="projectDetailAddEvent" type="button">+ Termin</button>':''}</div><div>${events.length?events.map(e=>`<button class="project-detail-row project-detail-row-main" data-project-detail-event="${e.id}" type="button"><b>${esc(e.title)}</b><small>${esc(eventDateRangeText(e))}${eventTimeRangeText(e)?` · ${esc(eventTimeRangeText(e))}`:""}</small></button>`).join(""):'<div class="empty">Keine Termine.</div>'}</div>`;
+    if(tab==="notes")panel.innerHTML=`<div class="detail-box full-detail"><b>Notizen</b><div class="project-notes-display">${esc(current.notes||"Keine Notizen hinterlegt.")}</div></div>`;
+    $("#projectDetailAddTask")?.addEventListener("click",()=>{dlg.close();openTaskModal(null,current.id)});
+    $("#projectDetailAddEvent")?.addEventListener("click",()=>{dlg.close();openEventModal(null,current.id)});
+    $$('[data-project-detail-task]').forEach(b=>b.onclick=()=>{const t=recordById("tasks",b.dataset.projectDetailTask);if(t){dlg.close();openTaskModal(t)}});
+    $$('[data-project-detail-event]').forEach(b=>b.onclick=()=>{const e=recordById("events",b.dataset.projectDetailEvent);if(e)showEventDetails(e)});
+  };
+  $$('[data-project-detail-tab]').forEach(b=>b.onclick=()=>renderTab(b.dataset.projectDetailTab));renderTab("overview");
+  $("#projectDetailEdit")?.addEventListener("click",()=>{dlg.close();openProjectModal(current)});
+  $("#projectDetailClose")?.addEventListener("click",()=>{dlg.close();vp2CloseProject(current)});
+  $("#projectDetailArchive")?.addEventListener("click",()=>{dlg.close();archiveProject(current.id)});
+  dlg.showModal();
+}
+openProjectModal=function(rec=null){
+  const r=rec||{name:"",startDate:"",endDate:"",status:"planned",groupId:"",description:"",notes:""},st=rec?projectTaskStats(rec.id):{total:0,done:0,progress:0};
+  showModal(rec?"Projekt bearbeiten":"Neues Projekt",`<div class="form-grid"><label class="full">Projektname<input id="fName" value="${esc(r.name)}"></label><label>Projektbeginn<input id="fProjectStartDate" type="date" value="${esc(projectStartDate(r))}"></label><label>Projektende<input id="fProjectEndDate" type="date" value="${esc(projectEndDate(r))}"></label><label>Status<select id="fStatus">${["planned","active","closed"].map(s=>`<option value="${s}" ${r.status===s?"selected":""}>${statusLabel(s)}</option>`).join("")}</select></label><label>Gruppe<select id="fGroup">${groupOptions(r.groupId)}</select></label>${rec?`<div class="project-modal-progress full"><b>${st.total?`${st.progress}% Fortschritt`:"Noch keine Aufgaben vorhanden"}</b>${st.total?`<span>${st.done} von ${st.total} Aufgaben erledigt</span><div class="progress"><span style="width:${st.progress}%"></span></div>`:""}</div>`:""}<label class="full">Beschreibung<textarea id="fDescription" rows="4">${esc(r.description||"")}</textarea></label><label class="full">Notizen<textarea id="fProjectNotes" rows="5">${esc(r.notes||"")}</textarea></label></div>`,()=>{const name=$("#fName").value.trim();if(!name)return false;let start=$("#fProjectStartDate").value,end=$("#fProjectEndDate").value;if(!start&&end)start=end;if(start&&!end)end=start;if(start&&end&&end<start){alert("Das Projektende darf nicht vor dem Projektbeginn liegen.");return false}const target=rec||{id:uid(),createdAt:now()};const oldStatus=target.status;Object.assign(target,{name,startDate:start,endDate:end,due:end||start||"",status:$("#fStatus").value,groupId:$("#fGroup").value,description:$("#fDescription").value.trim(),notes:$("#fProjectNotes").value.trim()});if(target.status==="closed"&&oldStatus!=="closed")target.completedAt=now();if(target.status!=="closed")delete target.completedAt;touch(target);if(!rec)db.projects.push(target);saveLocal();return true});
+};
+renderProjects=function(){
+  const q=($("#projectSearch")?.value||"").toLowerCase(),f=$("#projectStatusFilter")?.value||"";
+  const rows=activeRows("projects").filter(p=>(!q||`${p.name} ${p.description||""} ${p.notes||""}`.toLowerCase().includes(q))&&(!f||p.status===f));
+  $("#projectGrid").innerHTML=rows.length?rows.map(p=>{const st=projectTaskStats(p.id),next=vp2ProjectNextEvent(p.id),allDone=st.total>0&&st.open===0;return `<div class="card project-card project-card-v2"><div class="row"><h3>${esc(p.name)}</h3>${statusBadge(p.status)}</div><p>${esc(p.description||"Keine Beschreibung hinterlegt.")}</p><div class="mini-meta">${esc(groupName(p.groupId))} · ${esc(projectDateRangeText(p))}</div><div class="project-progress-head"><span>${st.total?`<b>${st.progress}%</b> Fortschritt`:"Noch keine Aufgaben"}</span><span>${st.done}/${st.total} erledigt</span></div>${st.total?`<div class="progress"><span style="width:${st.progress}%"></span></div>`:""}<div class="project-card-info"><span><b>${st.open}</b> offen</span><span><b>${vp2ProjectEvents(p.id).length}</b> Termine</span><span><b>${next?fmtShort(eventStartDate(next)):"—"}</b> nächster Termin</span></div>${allDone&&p.status!=="closed"?`<div class="project-complete-hint">✓ Alle Aufgaben erledigt. <button class="action-link" data-close-project="${p.id}">Projekt abschließen</button></div>`:""}<div class="row project-card-actions"><button class="btn tiny primary" data-open-project="${p.id}" type="button">Projekt öffnen</button><span><button class="action-link" data-edit-project="${p.id}">Bearbeiten</button>${p.status==="closed"?` <button class="action-link archive-link" data-archive-project="${p.id}">Archivieren</button>`:""} <button class="action-link danger-text" data-delete-project="${p.id}">Löschen</button></span></div></div>`}).join(""):`<div class="empty">Keine Projekte.</div>`;
+  $$('[data-open-project]').forEach(b=>b.onclick=()=>showProjectDetails(byId("projects",b.dataset.openProject)));
+  $$('[data-edit-project]').forEach(b=>b.onclick=()=>openProjectModal(byId("projects",b.dataset.editProject)));
+  $$('[data-close-project]').forEach(b=>b.onclick=()=>vp2CloseProject(byId("projects",b.dataset.closeProject)));
+  $$('[data-archive-project]').forEach(b=>b.onclick=()=>archiveProject(b.dataset.archiveProject));
+  $$('[data-delete-project]').forEach(b=>b.onclick=()=>{const p=byId("projects",b.dataset.deleteProject);if(p&&confirm(`Projekt „${p.name}“ und seine Projektaufgaben in den Papierkorb verschieben?`)){vp2MoveProjectToTrash(p)}});
+};
+
+renderArchive=function(){
+  const q=($("#archiveSearch")?.value||"").toLowerCase(),yf=$("#archiveYearFilter")?.value||"";
+  const projects=archivedRows("projects").slice().sort((a,b)=>String(b.archivedAt||"").localeCompare(String(a.archivedAt||"")));
+  $("#archiveProjectCount").textContent=projects.length;
+  const years=[...new Set(projects.map(p=>String((p.completedAt||p.archivedAt||projectEndDate(p)||"").slice(0,4))).filter(Boolean))].sort().reverse();
+  const yearSel=$("#archiveYearFilter");if(yearSel){const old=yearSel.value;yearSel.innerHTML='<option value="">Alle Jahre</option>'+years.map(y=>`<option ${old===y?"selected":""}>${y}</option>`).join("")}
+  const rows=projects.filter(p=>{const y=String((p.completedAt||p.archivedAt||projectEndDate(p)||"").slice(0,4));return(!q||`${p.name} ${p.description||""} ${p.notes||""}`.toLowerCase().includes(q))&&(!yf||y===yf)});
+  const grouped=new Map();rows.forEach(p=>{const y=String((p.completedAt||p.archivedAt||projectEndDate(p)||"Ohne Jahr").slice(0,4)||"Ohne Jahr");if(!grouped.has(y))grouped.set(y,[]);grouped.get(y).push(p)});
+  $("#archiveProjectsByYear").innerHTML=rows.length?[...grouped.entries()].map(([y,ps])=>`<section class="archive-year-group"><h2>${esc(y)}</h2><div class="archive-list">${ps.map(p=>{const st=projectTaskStats(p.id);return `<div class="card archive-item archive-project-v2"><div class="archive-icon">📁</div><div class="archive-copy"><b>${esc(p.name)}</b><span>${esc(projectDateRangeText(p))} · ${st.done}/${st.total} Aufgaben erledigt</span><small>${esc(p.description||"")}</small><em>Abgeschlossen ${esc(archiveDateText(p.completedAt))} · Archiviert ${esc(archiveDateText(p.archivedAt))}</em></div><div class="archive-row-actions"><button class="btn tiny secondary" data-archive-open="${p.id}" type="button">Öffnen</button><button class="btn tiny secondary" data-restore-project="${p.id}" type="button">Wiederherstellen</button><button class="btn tiny danger" data-archive-delete="${p.id}" type="button">Löschen</button></div></div>`}).join("")}</div></section>`).join(""):'<div class="card empty">Keine archivierten Projekte.</div>';
+  $$('[data-archive-open]').forEach(b=>b.onclick=()=>showProjectDetails(recordById("projects",b.dataset.archiveOpen)));
+  $$('[data-restore-project]').forEach(b=>b.onclick=()=>restoreProject(b.dataset.restoreProject));
+  $$('[data-archive-delete]').forEach(b=>b.onclick=()=>{const p=recordById("projects",b.dataset.archiveDelete);if(p&&confirm(`Archiviertes Projekt „${p.name}“ und seine Projektaufgaben in den Papierkorb verschieben?`)){vp2MoveProjectToTrash(p)}});
+};
+
+/* ---------- Calendar: appointments only + birthdays/jubilees ---------- */
+function vp2DateStr(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`}
+function vp2AddDays(ds,n){const d=new Date(`${ds}T12:00:00`);d.setDate(d.getDate()+n);return vp2DateStr(d)}
+function vp2DayDiff(a,b){return Math.round((new Date(`${b}T12:00:00`)-new Date(`${a}T12:00:00`))/86400000)}
+function vp2RecurrenceStartOnOrBefore(e,ds){
+  const start=eventStartDate(e);if(!start||ds<start)return "";
+  const until=e.recurrenceUntil||"9999-12-31";if(ds>until)return "";
+  const mode=e.recurrence||"none";if(mode==="none")return start;
+  const s=new Date(`${start}T12:00:00`),d=new Date(`${ds}T12:00:00`);
+  if(mode==="daily")return ds;
+  if(mode==="weekly"){const diff=vp2DayDiff(start,ds),back=((diff%7)+7)%7;return vp2AddDays(ds,-back)}
+  if(mode==="monthly"){
+    const day=s.getDate();let y=d.getFullYear(),m=d.getMonth();let last=new Date(y,m+1,0).getDate(),cand=vp2DateStr(new Date(y,m,Math.min(day,last),12));if(cand>ds){m--;if(m<0){m=11;y--}last=new Date(y,m+1,0).getDate();cand=vp2DateStr(new Date(y,m,Math.min(day,last),12))}return cand;
+  }
+  if(mode==="yearly"){
+    let y=d.getFullYear(),m=s.getMonth(),day=s.getDate(),last=new Date(y,m+1,0).getDate(),cand=vp2DateStr(new Date(y,m,Math.min(day,last),12));if(cand>ds){y--;last=new Date(y,m+1,0).getDate();cand=vp2DateStr(new Date(y,m,Math.min(day,last),12))}return cand;
+  }
+  return start;
+}
+function vp2EventOccursOn(e,ds){
+  const start=eventStartDate(e),end=eventEndDate(e)||start;if(!start)return false;
+  const duration=Math.max(0,vp2DayDiff(start,end));
+  if(!e.recurrence||e.recurrence==="none")return ds>=start&&ds<=end;
+  const occ=vp2RecurrenceStartOnOrBefore(e,ds);if(!occ||occ<start||(e.recurrenceUntil&&occ>e.recurrenceUntil))return false;
+  const diff=vp2DayDiff(start,occ);
+  if(e.recurrence==="weekly"&&diff%7!==0)return false;
+  if(e.recurrence==="monthly"){const s=new Date(`${start}T12:00:00`),o=new Date(`${occ}T12:00:00`);if((o.getFullYear()-s.getFullYear())*12+(o.getMonth()-s.getMonth())<0)return false}
+  if(e.recurrence==="yearly"&&new Date(`${occ}T12:00:00`).getFullYear()<new Date(`${start}T12:00:00`).getFullYear())return false;
+  return ds>=occ&&ds<=vp2AddDays(occ,duration);
+}
+eventOccursOn=function(e,ds){return vp2EventOccursOn(e,ds)};
+function vp2EventOccurrenceStartsBetween(e,from,to){
+  const out=[];for(let ds=from;ds<=to;ds=vp2AddDays(ds,1)){if(vp2EventOccursOn(e,ds)){const prev=vp2AddDays(ds,-1);if(!vp2EventOccursOn(e,prev)||ds===eventStartDate(e))out.push(ds)}}return out;
+}
+function vp2MemberActiveOn(m,ds){
+  if(!m)return false;if(m.entryDate&&m.entryDate>ds)return false;if(m.exitDate&&m.exitDate<ds)return false;if(m.deceasedDate&&m.deceasedDate<ds)return false;return true;
+}
+function vp2CalendarFilters(){return {type:$("#calendarTypeFilter")?.value||"",project:$("#calendarProjectFilter")?.value||"",group:$("#calendarGroupFilter")?.value||""}}
+function vp2CalendarItemsForDate(ds){
+  const f=vp2CalendarFilters(),year=Number(ds.slice(0,4)),items=[];
+  if(!f.type||f.type==="event")activeRows("events").filter(e=>vp2EventOccursOn(e,ds)&&(!f.project||e.projectId===f.project)&&(!f.group||e.groupId===f.group)).forEach(e=>items.push({kind:"event",id:e.id,title:e.title||"Termin",time:eventStartTime(e)||"",record:e,sort:`0-${eventStartTime(e)||"99:99"}`}));
+  if(!f.project&&!f.group&&(!f.type||f.type==="birthday"))activeRows("members").filter(m=>m.birthDate&&vp2MemberActiveOn(m,ds)&&recurringDateForYear(m.birthDate,year)===ds).forEach(m=>{const age=year-Number(m.birthDate.slice(0,4));items.push({kind:"birthday",id:m.id,title:memberFullName(m),sub:`${age}. Geburtstag`,icon:isRoundBirthdayAge(age)?"🎉":"🎂",sort:"1"})});
+  if(!f.project&&!f.group&&(!f.type||f.type==="jubilee"))activeRows("members").filter(m=>m.entryDate&&vp2MemberActiveOn(m,ds)&&recurringDateForYear(m.entryDate,year)===ds).forEach(m=>{const years=year-Number(m.entryDate.slice(0,4));if(years>0&&isConfiguredJubilee(years))items.push({kind:"jubilee",id:m.id,title:memberFullName(m),sub:`${years} Jahre Vereinsmitglied`,icon:"★",sort:"2"})});
+  return items.sort((a,b)=>a.sort.localeCompare(b.sort)||a.title.localeCompare(b.title,"de"));
+}
+function vp2PopulateCalendarFilters(){
+  const p=$("#calendarProjectFilter"),g=$("#calendarGroupFilter");if(p){const old=p.value;p.innerHTML='<option value="">Alle Projekte</option>'+allRows("projects").filter(x=>!x.deletedAt).map(x=>`<option value="${x.id}" ${old===x.id?"selected":""}>${esc(x.name)}</option>`).join("")}if(g){const old=g.value;g.innerHTML='<option value="">Alle Gruppen</option><option value="__all__">Gesamtverein</option>'+vp2CurrentGroups().map(x=>`<option value="${x.id}" ${old===x.id?"selected":""}>${esc(x.name)}</option>`).join("");if(old==="__all__")g.value=old}
+}
+function vp2FilteredGroupMatch(e,filter){return !filter||(filter==="__all__"?!e.groupId:e.groupId===filter)}
+function vp2CalendarItemsForDateWithGroup(ds){
+  const f=vp2CalendarFilters();if(f.group==="__all__"){const old=$("#calendarGroupFilter").value;$("#calendarGroupFilter").value="";const items=vp2CalendarItemsForDate(ds).filter(i=>i.kind!=="event"||!i.record.groupId);$("#calendarGroupFilter").value=old;return items}return vp2CalendarItemsForDate(ds)
+}
+function vp2RenderCalendarList(from,to,host){
+  const days=[];for(let ds=from;ds<=to;ds=vp2AddDays(ds,1)){const items=vp2CalendarItemsForDateWithGroup(ds);if(items.length)days.push({ds,items})}
+  host.innerHTML=days.length?days.map(day=>`<section class="calendar-agenda-day"><div class="calendar-agenda-date"><b>${esc(new Intl.DateTimeFormat("de-DE",{weekday:"long"}).format(new Date(`${day.ds}T12:00:00`)))}</b><span>${esc(fmtDate(day.ds))}</span></div><div class="calendar-agenda-items">${day.items.map(item=>item.kind==="event"?`<button class="calendar-agenda-item" data-v2-event="${item.id}" type="button"><span class="calendar-agenda-time">${esc(item.time?item.time+" Uhr":"ganztägig")}</span><span class="calendar-agenda-icon">📅</span><span class="calendar-agenda-copy"><b>${esc(item.title)}</b><small>${esc([item.record.location,item.record.projectId?projectNameAny(item.record.projectId):"",groupName(item.record.groupId)].filter(x=>x&&x!=="—"&&x!=="Gesamtverein").join(" · "))}</small></span></button>`:`<button class="calendar-agenda-item" data-v2-member="${item.id}" type="button"><span class="calendar-agenda-time">ganztägig</span><span class="calendar-agenda-icon">${item.icon}</span><span class="calendar-agenda-copy"><b>${esc(item.title)}</b><small>${esc(item.sub)}</small></span></button>`).join("")}</div></section>`).join(""):'<div class="calendar-agenda-empty">In diesem Zeitraum gibt es keine Einträge.</div>';
+  $$('[data-v2-event]').forEach(b=>b.onclick=()=>{const e=byId("events",b.dataset.v2Event);if(e)showEventDetails(e)});$$('[data-v2-member]').forEach(b=>b.onclick=()=>{selectedMemberId=b.dataset.v2Member;go("members");renderMembers()});
+}
+function vp2CalendarRangeForMode(mode){
+  const base=calDate;if(mode==="day"){const ds=vp2DateStr(base);return [ds,ds]}
+  if(mode==="week"){const d=new Date(base),wd=(d.getDay()+6)%7;d.setDate(d.getDate()-wd);return [vp2DateStr(d),vp2AddDays(vp2DateStr(d),6)]}
+  if(mode==="list"){const start=vp2DateStr(new Date(base.getFullYear(),base.getMonth(),1)),end=vp2DateStr(new Date(base.getFullYear(),base.getMonth()+2,0));return [start,end]}
+  return [vp2DateStr(new Date(base.getFullYear(),base.getMonth(),1)),vp2DateStr(new Date(base.getFullYear(),base.getMonth()+1,0))]
+}
+function vp2ApplyCalendarMode(){
+  const mode=vp2CalendarMode;[$("#calendarGrid"),$("#calendarWeek"),$("#calendarDay"),$("#calendarAgenda")].forEach(x=>{if(x)x.hidden=true});
+  const map={month:"#calendarGrid",week:"#calendarWeek",day:"#calendarDay",list:"#calendarAgenda"};const host=$(map[mode]);if(host)host.hidden=false;
+  $$('[data-calendar-mode]').forEach(b=>b.classList.toggle("active",b.dataset.calendarMode===mode));
+}
+function vp2SetCalendarMode(mode){if(!["month","week","day","list"].includes(mode))return;vp2CalendarMode=mode;localStorage.setItem(VP2_CAL_VIEW_KEY,mode);renderCalendar()}
+renderCalendar=function(){
+  vp2PopulateCalendarFilters();const y=calDate.getFullYear(),m=calDate.getMonth(),today=todayStr(),mode=vp2CalendarMode;
+  const [rangeStart,rangeEnd]=vp2CalendarRangeForMode(mode);
+  if(mode==="month"||mode==="list")$("#calendarTitle").textContent=new Intl.DateTimeFormat("de-DE",{month:"long",year:"numeric"}).format(calDate);
+  if(mode==="week")$("#calendarTitle").textContent=`Woche ${fmtDate(rangeStart)} – ${fmtDate(rangeEnd)}`;
+  if(mode==="day")$("#calendarTitle").textContent=new Intl.DateTimeFormat("de-DE",{weekday:"long",day:"2-digit",month:"long",year:"numeric"}).format(calDate);
+  if(mode==="month"){
+    const first=new Date(y,m,1),offset=(first.getDay()+6)%7,days=new Date(y,m+1,0).getDate(),prevDays=new Date(y,m,0).getDate();let cells=["Mo","Di","Mi","Do","Fr","Sa","So"].map((x,i)=>`<div class="weekday ${i>=5?"weekend-head":""}">${x}</div>`);
+    for(let cell=0;cell<42;cell++){
+      const raw=cell-offset+1;let date,day,outside=false;if(raw<1){day=prevDays+raw;date=new Date(y,m-1,day);outside=true}else if(raw>days){day=raw-days;date=new Date(y,m+1,day);outside=true}else{day=raw;date=new Date(y,m,day)}const ds=vp2DateStr(date),items=outside?[]:vp2CalendarItemsForDateWithGroup(ds),visible=items.slice(0,4),more=items.length-visible.length;
+      cells.push(`<div class="cal-day ${outside?"outside-month":""} ${ds===today?"today":""}" data-calendar-drop-date="${ds}"><div class="cal-day-top"><span class="cal-day-number">${day}</span>${ds===today?'<span class="today-label">Heute</span>':''}</div><div class="cal-day-content">${visible.map(item=>item.kind==="event"?`<button draggable="true" class="cal-chip cal-event-button" data-v2-event="${item.id}" data-drag-event="${item.id}" type="button" style="--event-color:${eventColor(item.record)};--event-soft:${colorWithAlpha(eventColor(item.record),.14)}">${esc(item.title)}${item.time?` ${esc(item.time)}`:""}</button>`:`<button class="cal-chip ${item.kind}" data-v2-member="${item.id}" type="button">${item.icon} ${esc(item.title)}</button>`).join("")}${more?`<div class="cal-more">+ ${more} weitere</div>`:""}</div></div>`);
+    }
+    $("#calendarGrid").innerHTML=cells.join("");
+  }else if(mode==="week")vp2RenderCalendarList(rangeStart,rangeEnd,$("#calendarWeek"));
+  else if(mode==="day")vp2RenderCalendarList(rangeStart,rangeEnd,$("#calendarDay"));
+  else vp2RenderCalendarList(rangeStart,rangeEnd,$("#calendarAgenda"));
+  const upcoming=[];for(let ds=todayStr(),i=0;i<45;i++,ds=vp2AddDays(ds,1)){vp2CalendarItemsForDateWithGroup(ds).forEach(x=>upcoming.push({...x,ds}));if(upcoming.length>14)break}
+  $("#calendarSideList").innerHTML=upcoming.slice(0,12).map(x=>x.kind==="event"?`<button class="event-row event-row-button" data-v2-event="${x.id}" type="button"><div class="date-box">${esc(x.ds.slice(8,10))}<small>${esc(new Intl.DateTimeFormat("de-DE",{month:"short"}).format(new Date(`${x.ds}T12:00:00`)))}</small></div><div><div class="mini-title">${esc(x.title)}</div><div class="mini-meta">${esc(x.time||"ganztägig")}</div></div></button>`:`<button class="birthday-row" data-v2-member="${x.id}" type="button"><span class="person-dot">${x.icon}</span><span><span class="mini-title">${esc(x.title)}</span><span class="mini-meta">${esc(x.sub)}</span></span></button>`).join("")||'<div class="empty">Keine kommenden Einträge.</div>';
+  $$('[data-v2-event]').forEach(b=>b.onclick=e=>{if(e.type==="click"){const ev=byId("events",b.dataset.v2Event);if(ev)showEventDetails(ev)}});$$('[data-v2-member]').forEach(b=>b.onclick=()=>{selectedMemberId=b.dataset.v2Member;go("members");renderMembers()});
+  $$('[data-drag-event]').forEach(b=>b.addEventListener("dragstart",e=>e.dataTransfer.setData("text/vplaner-event",b.dataset.dragEvent)));
+  $$('[data-calendar-drop-date]').forEach(cell=>{cell.addEventListener("dragover",e=>e.preventDefault());cell.addEventListener("drop",e=>{e.preventDefault();const id=e.dataTransfer.getData("text/vplaner-event"),ev=byId("events",id);if(!ev)return;const oldStart=eventStartDate(ev),oldEnd=eventEndDate(ev)||oldStart,duration=vp2DayDiff(oldStart,oldEnd);ev.startDate=cell.dataset.calendarDropDate;ev.endDate=vp2AddDays(ev.startDate,duration);ev.date=ev.startDate;touch(ev);saveLocal()})});
+  vp2ApplyCalendarMode();
+};
+openEventModal=function(rec=null,presetProjectId="",preset={}){
+  const project=presetProjectId?recordById("projects",presetProjectId):null;if(!rec&&project&&project.status==="closed")return alert("Abgeschlossene Projekte müssen zuerst wieder aktiviert werden, bevor neue Termine angelegt werden können.");
+  const r=rec||{title:preset.title||"",startDate:preset.startDate||todayStr(),endDate:preset.endDate||preset.startDate||todayStr(),startTime:"",endTime:"",location:"",groupId:project?.groupId||"",projectId:presetProjectId||"",description:"",color:"#1677c8",recurrence:"none",recurrenceUntil:""};
+  const fixed=!!(presetProjectId&&!rec),allDay=!eventStartTime(r)&&!eventEndTime(r);
+  showModal(rec?"Termin bearbeiten":fixed?"Termin zum Projekt anlegen":"Neuer Termin",`<div class="form-grid">${fixed?`<div class="form-note full">Projekt: <b>${esc(project?.name||"")}</b></div>`:""}<label class="full">Titel<input id="fTitle" value="${esc(r.title||"")}"></label><label>Von<input id="fStartDate" type="date" value="${esc(eventStartDate(r)||todayStr())}"></label><label>Bis<input id="fEndDate" type="date" value="${esc(eventEndDate(r)||eventStartDate(r)||todayStr())}"></label><label class="checkline full"><input id="fAllDay" type="checkbox" ${allDay?"checked":""}> Ganztägig</label><label>Startzeit<input id="fStartTime" type="time" value="${esc(eventStartTime(r))}"></label><label>Endzeit<input id="fEndTime" type="time" value="${esc(eventEndTime(r))}"></label><label>Ort<input id="fLocation" value="${esc(r.location||"")}"></label><label>Gruppe<select id="fGroup">${groupOptions(r.groupId)}</select></label><label class="full">Projekt<select id="fEventProject" ${fixed?"disabled":""}>${projectOptions(r.projectId||presetProjectId)}</select></label><label>Wiederholung<select id="fRecurrence"><option value="none">Keine</option>${[["daily","Täglich"],["weekly","Wöchentlich"],["monthly","Monatlich"],["yearly","Jährlich"]].map(([v,l])=>`<option value="${v}" ${r.recurrence===v?"selected":""}>${l}</option>`).join("")}</select></label><label>Wiederholen bis<input id="fRecurrenceUntil" type="date" value="${esc(r.recurrenceUntil||"")}"></label><label class="full">Notizen<textarea id="fEventDescription" rows="4">${esc(r.description||"")}</textarea></label><label>Farbe<input id="fColor" type="color" value="${eventColor(r)}"></label></div>`,()=>{const title=$("#fTitle").value.trim(),sd=$("#fStartDate").value,ed=$("#fEndDate").value||sd;if(!title||!sd)return false;if(ed<sd){alert("Das Bis-Datum darf nicht vor dem Von-Datum liegen.");return false}const all=$("#fAllDay").checked,st=all?"":$("#fStartTime").value,et=all?"":$("#fEndTime").value;if(!all&&st&&et&&sd===ed&&et<=st){alert("Die Endzeit muss nach der Startzeit liegen.");return false}const target=rec||{id:uid(),createdAt:now()};Object.assign(target,{title,startDate:sd,endDate:ed,date:sd,startTime:st,endTime:et,time:st,location:$("#fLocation").value.trim(),groupId:$("#fGroup").value,projectId:fixed?presetProjectId:$("#fEventProject").value,description:$("#fEventDescription").value.trim(),color:$("#fColor").value,recurrence:$("#fRecurrence").value,recurrenceUntil:$("#fRecurrenceUntil").value});touch(target);if(!rec)db.events.push(target);saveLocal();return true});
+  const toggle=()=>{$("#fStartTime").disabled=$("#fAllDay").checked;$("#fEndTime").disabled=$("#fAllDay").checked};$("#fAllDay")?.addEventListener("change",toggle);toggle();
+};
+showEventDetails=function(e){
+  const dlg=$("#detailModal"),project=e.projectId?recordById("projects",e.projectId):null,locked=!!project?.archivedAt;$("#detailTitle").textContent=e.title||"Termin";$("#detailBody").innerHTML=`<div class="event-detail"><div class="event-detail-grid"><div class="detail-box"><b>Datum</b>${esc(eventDateRangeText(e))}</div><div class="detail-box"><b>Zeit</b>${esc(eventTimeRangeText(e)||"ganztägig")}</div><div class="detail-box"><b>Ort</b>${esc(e.location||"—")}</div><div class="detail-box"><b>Gruppe</b>${esc(groupName(e.groupId))}</div><div class="detail-box"><b>Projekt</b>${esc(project?`${project.name}${project.archivedAt?" · archiviert":""}`:"—")}</div><div class="detail-box"><b>Wiederholung</b>${esc(({daily:"Täglich",weekly:"Wöchentlich",monthly:"Monatlich",yearly:"Jährlich",none:"Keine"})[e.recurrence||"none"]||"Keine")}</div>${e.description?`<div class="detail-box full-detail"><b>Notizen</b>${esc(e.description)}</div>`:""}</div>${locked?'<div class="form-note">Dieser Termin gehört zu einem archivierten Projekt und ist hier schreibgeschützt.</div>':`<div class="event-detail-actions"><button class="btn primary" id="detailEditEvent" type="button">Bearbeiten</button><button class="btn danger" id="detailDeleteEvent" type="button">Termin löschen</button></div>`}</div>`;dlg.showModal();if(!locked){$("#detailEditEvent").onclick=()=>{dlg.close();openEventModal(e)};$("#detailDeleteEvent").onclick=()=>{if(confirm(`Termin „${e.title}“ in den Papierkorb verschieben?`)){markDeleted("events",e.id);dlg.close();saveLocal()}};}
+};
+
+/* ---------- Vereinsjahr ---------- */
+yearEntriesForMonth=function(year,monthIndex){
+  const rows=[],monthStart=`${year}-${String(monthIndex+1).padStart(2,"0")}-01`,monthEnd=`${year}-${String(monthIndex+1).padStart(2,"0")}-${String(new Date(year,monthIndex+1,0).getDate()).padStart(2,"0")}`;
+  allRows("events").filter(e=>!e.deletedAt).forEach(e=>{
+    const starts=vp2EventOccurrenceStartsBetween(e,monthStart,monthEnd);starts.forEach(ds=>rows.push({kind:"event",id:e.id,date:ds,sortDate:ds,title:e.title||"Termin",record:e}));
+    if(!e.recurrence||e.recurrence==="none")if(eventOverlapsMonth(e,year,monthIndex)&&!starts.length)rows.push({kind:"event",id:e.id,date:eventStartDate(e)<monthStart?monthStart:eventStartDate(e),sortDate:eventStartDate(e),title:e.title||"Termin",record:e});
+  });
+  allRows("projects").filter(p=>!p.deletedAt&&projectOverlapsMonth(p,year,monthIndex)).forEach(p=>{const start=projectStartDate(p);rows.push({kind:"project",id:p.id,date:start<monthStart?monthStart:start,sortDate:start,title:p.name||"Projekt",record:p})});
+  allRows("members").filter(m=>m.birthDate).forEach(m=>{const date=recurringDateForYear(m.birthDate,year);if(date&&Number(date.slice(5,7))===monthIndex+1&&vp2MemberActiveOn(m,date)){const age=year-Number(m.birthDate.slice(0,4));rows.push({kind:"birthday",id:m.id,date,sortDate:date,title:`${memberFullName(m)} · ${age}. Geburtstag`,record:m,age,roundBirthday:isRoundBirthdayAge(age)})}});
+  allRows("members").filter(m=>m.entryDate).forEach(m=>{const years=year-Number(m.entryDate.slice(0,4));if(years<=0||!isConfiguredJubilee(years))return;const date=recurringDateForYear(m.entryDate,year);if(date&&Number(date.slice(5,7))===monthIndex+1&&vp2MemberActiveOn(m,date))rows.push({kind:"jubilee",id:m.id,date,sortDate:date,title:`${memberFullName(m)} · ${years} Jahre im Verein`,record:m,years})});
+  return rows.sort((a,b)=>String(a.sortDate||"").localeCompare(String(b.sortDate||""))||String(a.title).localeCompare(String(b.title),"de"));
+};
+yearEntryHTML=function(item){
+  if(item.kind==="event")return `<button type="button" class="year-item year-event-button" data-year-event="${item.id}"><span class="year-type-icon">📅</span><b>${esc(fmtShort(item.date))}</b><span>${esc(item.title)}</span><small>Termin${item.record.projectId?` · ${esc(projectNameAny(item.record.projectId))}`:""}</small></button>`;
+  if(item.kind==="project")return `<button type="button" class="year-item year-project-button" data-year-project="${item.id}"><span class="year-type-icon">📁</span><b>${esc(projectDateRangeText(item.record))}</b><span>${esc(item.title)}</span><small>Projekt · ${esc(statusLabel(item.record.status))}${item.record.archivedAt?" · archiviert":""}</small></button>`;
+  const icon=item.kind==="jubilee"?"★":item.roundBirthday?"🎉":"🎂",label=item.kind==="jubilee"?`${item.years} Jahre Vereinsmitglied`:`${item.age}. Geburtstag`;
+  return `<button type="button" class="year-item year-special-button" data-year-member="${item.id}"><span class="year-type-icon">${icon}</span><b>${esc(fmtShort(item.date))}</b><span>${esc(memberFullName(item.record))}</span><small>${esc(label)}</small></button>`;
+};
+renderYear=function(){
+  const year=calDate.getFullYear();$("#yearTitle").textContent=`Vereinsjahr ${year}`;
+  const allMonths=[...Array(12)].map((_,i)=>yearEntriesForMonth(year,i));
+  const all=allMonths.flat(),events=new Set(all.filter(x=>x.kind==="event").map(x=>x.id)).size,projects=new Set(all.filter(x=>x.kind==="project").map(x=>x.id)).size,round=all.filter(x=>x.kind==="birthday"&&x.roundBirthday).length,jub=all.filter(x=>x.kind==="jubilee").length;
+  $("#yearSummary").innerHTML=`<span><b>${projects}</b> Projekte</span><span><b>${events}</b> Termine</span><span><b>${round}</b> besondere Geburtstage</span><span><b>${jub}</b> Jubiläen</span>`;
+  $("#yearNote").value=db.settings.yearNotes?.[year]||"";
+  $("#yearGrid").innerHTML=allMonths.map((entries,i)=>{const name=new Intl.DateTimeFormat("de-DE",{month:"long"}).format(new Date(year,i,1)),filtered=vp2YearFilter?entries.filter(x=>x.kind===vp2YearFilter):entries;return `<div class="card month-card"><div class="year-month-head"><h3>${name}</h3><span class="year-month-count">${filtered.length}</span></div>${filtered.length?filtered.map(yearEntryHTML).join(""):'<div class="mini-meta">Keine Einträge</div>'}</div>`}).join("");
+  $$('[data-year-event]').forEach(b=>b.onclick=()=>{const e=recordById("events",b.dataset.yearEvent);if(e)showEventDetails(e)});$$('[data-year-project]').forEach(b=>b.onclick=()=>{const p=recordById("projects",b.dataset.yearProject);if(p)showProjectDetails(p)});$$('[data-year-member]').forEach(b=>b.onclick=()=>{selectedMemberId=b.dataset.yearMember;go("members");renderMembers()});
+  $$('[data-year-filter]').forEach(b=>b.classList.toggle("active",b.dataset.yearFilter===vp2YearFilter));
+};
+
+/* ---------- Members ---------- */
+memberSortValue=function(m,key){if(key==="number"){const v=String(m.memberNo||"").trim();return /^\d+$/.test(v)?Number(v):v.toLowerCase()}if(key==="name")return `${m.lastName||""}\0${m.firstName||""}`.toLowerCase();if(key==="status")return({active:1,passive:2,exited:3,deceased:4})[m.status]||99;if(key==="age")return ageAt(m.birthDate)??999;if(key==="groups")return effectiveGroupIdsForMember(m).map(groupName).join(" ").toLowerCase();return ""};
+function vp2MemberFunctions(m){return activeRows("functions").filter(f=>f.memberId===m.id&&!f.inactiveAt).sort((a,b)=>String(a.startDate||"").localeCompare(String(b.startDate||"")))}
+renderMembers=function(){
+  const q=($("#memberSearch")?.value||"").toLowerCase(),f=$("#memberStatusFilter")?.value||"",hf=$("#memberHonoraryFilter")?.value||"";
+  const rows=sortMembers(activeRows("members").filter(m=>(!q||`${m.firstName} ${m.lastName} ${m.memberNo} ${m.email||""}`.toLowerCase().includes(q))&&(!f||m.status===f)&&(!hf||(hf==="yes"?!!m.honorary:!m.honorary))));
+  $("#memberTable").innerHTML=rows.length?rows.map(m=>`<tr class="selectable ${m.id===selectedMemberId?"selected":""}" data-member-row="${m.id}"><td>${esc(memberNo(m))}</td><td><b>${esc(memberFullName(m))}</b>${m.honorary?'<small class="mini-meta">★ Ehrenmitglied</small>':''}</td><td>${statusBadge(m.status)}</td><td>${ageAt(m.birthDate)??"—"}</td><td>${esc(effectiveGroupIdsForMember(m).map(groupName).filter(x=>x!=="—").join(", ")||"—")}</td></tr>`).join(""):'<tr><td colspan="5" class="empty">Keine Mitglieder.</td></tr>';
+  updateMemberSortUI();$$('[data-member-row]').forEach(tr=>tr.onclick=()=>{selectedMemberId=tr.dataset.memberRow;renderMemberDetail();$$('[data-member-row]').forEach(x=>x.classList.toggle("selected",x.dataset.memberRow===selectedMemberId))});
+  if(!selectedMemberId||!byId("members",selectedMemberId))selectedMemberId=rows[0]?.id||null;renderMemberDetail();
+};
+renderMemberDetail=function(){
+  const host=$("#memberDetail"),m=byId("members",selectedMemberId);if(!m){host.innerHTML='<div class="empty">Mitglied auswählen.</div>';return}
+  const funcs=vp2MemberFunctions(m),current=funcs.filter(f=>functionState(f)==="active"),former=funcs.filter(f=>functionState(f)==="former"),hist=[...(m.history||[]),...(m.statusHistory||[])].sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")));
+  host.innerHTML=`<div class="member-hero">${memberPhotoHTML(m)}<div><h2>${esc(`${m.firstName||""} ${m.lastName||""}`.trim())}</h2><div>${statusBadge(m.status)} ${m.honorary?'<span class="badge purple">Ehrenmitglied</span>':''}</div><div class="mini-meta">Mitglied Nr. ${esc(memberNo(m))}</div></div></div><div class="member-detail-actions"><button class="btn primary" data-edit-member="${m.id}">Bearbeiten</button><button class="btn danger" data-delete-member="${m.id}">Löschen</button></div><div class="member-info-grid"><div class="detail-box"><b>Geboren</b>${m.birthDate?`${fmtDate(m.birthDate)} · ${ageAt(m.birthDate)} Jahre`:"—"}</div><div class="detail-box"><b>Mitgliedschaft</b>${m.entryDate?`${fmtDate(m.entryDate)} · ${Math.max(0,new Date().getFullYear()-Number(m.entryDate.slice(0,4)))} Jahre`:"—"}</div><div class="detail-box"><b>Kontakt</b>${esc([m.email,m.phone].filter(Boolean).join(" · ")||"—")}</div><div class="detail-box"><b>Adresse</b>${esc(m.address||"—")}</div></div><div class="group-section"><h3>Verein</h3>${effectiveGroupIdsForMember(m).length?effectiveGroupIdsForMember(m).map(id=>`<div class="person-pill">${esc(groupName(id))}</div>`).join(""):'<div class="mini-meta">Keine spezielle Gruppe zugeordnet.</div>'}${current.length?`<div class="function-summary">${current.map(f=>`<div><b>${esc(groupName(f.groupId))} → ${esc(f.title)}</b><small>${f.startDate?`seit ${fmtDate(f.startDate)}`:"aktuell"}</small></div>`).join("")}</div>`:""}</div>${m.honors?.length?`<div class="group-section"><h3>Ehrungen</h3>${m.honors.map(h=>`<div class="history-row"><b>${esc(h.title)}</b><span>${fmtDate(h.date)}</span></div>`).join("")}</div>`:""}${m.notes?`<div class="group-section"><h3>Notizen</h3><p>${esc(m.notes)}</p></div>`:""}<div class="group-section"><h3>Historie</h3>${hist.length?hist.map(h=>`<div class="history-row"><span>${fmtDate(h.date)}</span><b>${esc(h.note||"")}</b></div>`).join(""):'<div class="mini-meta">Noch keine Historieneinträge.</div>'}${former.length?former.map(f=>`<div class="history-row"><span>${fmtDate(f.endDate)}</span><b>Funktion beendet: ${esc(f.title)} · ${esc(groupName(f.groupId))}</b></div>`).join(""):""}</div>`;
+  $('[data-edit-member]')?.addEventListener("click",()=>openMemberModal(m));$('[data-delete-member]')?.addEventListener("click",()=>{if(confirm(`Mitglied „${memberFullName(m)}“ in den Papierkorb verschieben?\n\nFür einen normalen Vereinsaustritt bitte den Status „Ausgetreten“ verwenden.`)){markDeleted("members",m.id);selectedMemberId=null;saveLocal()}});
+};
+function vp2HonorRows(honors=[]){return honors.map((h,i)=>`<div class="honor-edit-row" data-honor-row><input class="honor-title" value="${esc(h.title||"")}" placeholder="Ehrung"><input class="honor-date" type="date" value="${esc(h.date||"")}"><button class="icon-btn small danger-text" data-remove-honor type="button">×</button></div>`).join("")}
+openMemberModal=function(rec=null){
+  const r=rec||{memberNo:nextAvailableMemberNo(),firstName:"",lastName:"",birthDate:"",status:"active",entryDate:todayStr(),exitDate:"",deceasedDate:"",honorary:false,email:"",phone:"",address:"",emergencyName:"",emergencyPhone:"",guardian:"",groupIds:[],photoData:"",history:[],statusHistory:[],honors:[],notes:""};
+  const groupRows=vp2CurrentGroups().map(g=>`<option value="${g.id}" ${(r.groupIds||[]).includes(g.id)?"selected":""}>${esc(g.name)}</option>`).join("");
+  showModal(rec?"Mitglied bearbeiten":"Neues Mitglied",`<div class="form-grid"><div class="form-section">Stammdaten</div><label>Mitgliedsnummer<input id="mNo" value="${esc(r.memberNo)}"></label><label>Status<select id="mStatus">${["active","passive","exited","deceased"].map(s=>`<option value="${s}" ${r.status===s?"selected":""}>${statusLabel(s)}</option>`).join("")}</select></label><label>Vorname<input id="mFirst" value="${esc(r.firstName)}"></label><label>Nachname<input id="mLast" value="${esc(r.lastName)}"></label><label>Geburtsdatum<input id="mBirth" type="date" value="${esc(r.birthDate||"")}"></label><label class="checkline"><input id="mHonorary" type="checkbox" ${r.honorary?"checked":""}> Ehrenmitglied</label><label class="full">Mitgliedsfoto<input id="mPhoto" type="file" accept="image/*"></label><div class="form-section">Mitgliedschaft</div><label>Eintritt<input id="mEntry" type="date" value="${esc(r.entryDate||"")}"></label><label data-member-status-field="exited">Austritt<input id="mExit" type="date" value="${esc(r.exitDate||"")}"></label><label data-member-status-field="deceased">Sterbedatum<input id="mDeceased" type="date" value="${esc(r.deceasedDate||"")}"></label><label class="full">Gruppen<select id="mGroups" multiple size="5">${groupRows}</select></label><div class="form-section">Kontakt</div><label>E-Mail<input id="mEmail" type="email" value="${esc(r.email||"")}"></label><label>Telefon<input id="mPhone" value="${esc(r.phone||"")}"></label><label class="full">Adresse<textarea id="mAddress" rows="2">${esc(r.address||"")}</textarea></label><label>Notfallkontakt<input id="mEmergencyName" value="${esc(r.emergencyName||"")}"></label><label>Notfall-Telefon<input id="mEmergencyPhone" value="${esc(r.emergencyPhone||"")}"></label><label class="full">Gesetzliche Vertretung<input id="mGuardian" value="${esc(r.guardian||"")}"></label><div class="form-section">Verein</div><div class="full"><b>Ehrungen</b><div id="mHonorList">${vp2HonorRows(r.honors||[])}</div><button class="btn tiny secondary" id="mAddHonor" type="button">+ Ehrung</button></div><div class="form-section">Notizen</div><label class="full"><textarea id="mNotes" rows="5">${esc(r.notes||"")}</textarea></label></div>`,async()=>{
+    const first=$("#mFirst").value.trim(),last=$("#mLast").value.trim();if(!first&&!last)return false;const no=$("#mNo").value.trim()||nextAvailableMemberNo();if(!memberNoAvailable(no,rec?.id||"")){alert(`Die Mitgliedsnummer ${no} ist bereits vergeben.`);return false}
+    const birth=$("#mBirth").value,guardian=$("#mGuardian").value.trim();if(birth&&ageAt(birth)<18&&!guardian&&!confirm("Das Mitglied ist minderjährig, aber es ist keine gesetzliche Vertretung hinterlegt. Trotzdem speichern?"))return false;
+    const target=rec||{id:uid(),createdAt:now(),history:[],statusHistory:[],honors:[]},oldStatus=target.status,oldGroups=new Set(target.groupIds||[]),oldHonors=(target.honors||[]).map(h=>`${h.title}|${h.date}`),photo=await readPhoto($("#mPhoto"),r.photoData||""),status=$("#mStatus").value,newGroups=[...$("#mGroups").selectedOptions].map(o=>o.value),honors=$$('[data-honor-row]').map(row=>({title:row.querySelector('.honor-title').value.trim(),date:row.querySelector('.honor-date').value})).filter(h=>h.title);
+    Object.assign(target,{memberNo:no,firstName:first,lastName:last,birthDate:birth,status,entryDate:$("#mEntry").value,exitDate:status==="exited"?($("#mExit").value||todayStr()):(target.exitDate||""),deceasedDate:status==="deceased"?($("#mDeceased").value||todayStr()):(target.deceasedDate||""),honorary:$("#mHonorary").checked,groupIds:newGroups,email:$("#mEmail").value.trim(),phone:$("#mPhone").value.trim(),address:$("#mAddress").value.trim(),emergencyName:$("#mEmergencyName").value.trim(),emergencyPhone:$("#mEmergencyPhone").value.trim(),guardian,photoData:photo,honors,notes:$("#mNotes").value.trim()});
+    target.history=Array.isArray(target.history)?target.history:[];target.statusHistory=Array.isArray(target.statusHistory)?target.statusHistory:[];
+    if(!rec&&target.entryDate)target.history.push({date:target.entryDate,note:"Vereinseintritt"});
+    if(rec&&oldStatus!==status){target.statusHistory.push({date:todayStr(),note:`Status geändert: ${statusLabel(oldStatus)} → ${statusLabel(status)}`});target.history.push({date:todayStr(),note:`Status geändert: ${statusLabel(oldStatus)} → ${statusLabel(status)}`})}
+    newGroups.filter(id=>!oldGroups.has(id)).forEach(id=>target.history.push({date:todayStr(),note:`Gruppe ${groupName(id)} beigetreten`}));[...oldGroups].filter(id=>!newGroups.includes(id)).forEach(id=>target.history.push({date:todayStr(),note:`Gruppe ${groupName(id)} beendet`}));
+    honors.filter(h=>!oldHonors.includes(`${h.title}|${h.date}`)).forEach(h=>target.history.push({date:h.date||todayStr(),note:`Ehrung erhalten: ${h.title}`}));touch(target);if(!rec){db.members.push(target);selectedMemberId=target.id}db.counters.memberNo=Number(nextAvailableMemberNo())||1;saveLocal();return true
+  });
+  function bindHonors(){ $$('[data-remove-honor]').forEach(b=>b.onclick=()=>b.closest('[data-honor-row]').remove()) }
+  $("#mAddHonor")?.addEventListener("click",()=>{$("#mHonorList").insertAdjacentHTML("beforeend",vp2HonorRows([{title:"",date:""}]));bindHonors()});bindHonors();
+  const showStatus=()=>{$$('[data-member-status-field]').forEach(el=>el.style.display=el.dataset.memberStatusField===$("#mStatus").value?"block":"none")};$("#mStatus")?.addEventListener("change",showStatus);showStatus();
+};
+
+/* ---------- Groups & Functions ---------- */
+function vp2GroupMembers(groupId){return activeRows("members").filter(m=>(m.groupIds||[]).includes(groupId))}
+renderGroups=function(){
+  const groups=vp2CurrentGroups().slice().sort((a,b)=>String(a.name||"").localeCompare(String(b.name||""),"de"));
+  if(!selectedGroupId||!recordById("groups",selectedGroupId)||recordById("groups",selectedGroupId)?.inactiveAt)selectedGroupId=groups[0]?.id||null;
+  $("#groupTree").innerHTML=groups.length?groups.map(g=>`<button class="node ${g.id===selectedGroupId?"active":""}" data-group-node="${g.id}" type="button"><b>${esc(g.name)}</b><span class="mini-meta">${vp2GroupMembers(g.id).length} Mitglieder</span></button>`).join(""):'<div class="empty">Noch keine Gruppen.</div>';
+  $$('[data-group-node]').forEach(b=>b.onclick=()=>{selectedGroupId=b.dataset.groupNode;renderGroups()});renderGroupDetail();renderFunctionOverview();
+};
+renderGroupDetail=function(){
+  const g=recordById("groups",selectedGroupId),host=$("#groupDetail");if(!g){$("#groupDetailTitle").textContent="Gruppendetails";host.innerHTML='<div class="empty">Gruppe auswählen.</div>';return}
+  const members=vp2GroupMembers(g.id),funcs=activeRows("functions").filter(f=>f.groupId===g.id&&!f.inactiveAt),current=funcs.filter(f=>functionState(f)==="active");$("#groupDetailTitle").textContent=g.name;
+  host.innerHTML=`<div class="detail-box full-detail"><b>Beschreibung</b>${esc(g.description||"Keine Beschreibung hinterlegt.")}</div><div class="group-section"><h3>Aktuelle Funktionen</h3>${current.length?current.map(f=>`<div class="function-row"><div><b>${esc(f.title)}</b></div><div>${esc(f.memberId&&byId("members",f.memberId)?memberFullName(byId("members",f.memberId)):"Nicht besetzt")}</div><div>${f.startDate?`seit ${fmtDate(f.startDate)}`:""}</div><div><button class="action-link" data-edit-function="${f.id}">Bearbeiten</button></div></div>`).join(""):'<div class="mini-meta">Keine aktuellen Funktionen.</div>'}</div><div class="group-section"><h3>Mitglieder</h3><div class="team-list">${members.length?members.map(m=>`<button class="person-pill" data-group-member="${m.id}" type="button">${esc(memberFullName(m))}</button>`).join(""):'<span class="mini-meta">Keine Mitglieder zugeordnet.</span>'}</div></div>`;
+  $("#editGroupBtn").textContent="Bearbeiten";$("#deleteGroupBtn").textContent=members.length||funcs.length?"Deaktivieren":"Löschen";
+  $$('[data-edit-function]').forEach(b=>b.onclick=()=>openFunctionModal(byId("functions",b.dataset.editFunction)));$$('[data-group-member]').forEach(b=>b.onclick=()=>{selectedMemberId=b.dataset.groupMember;go("members");renderMembers()});
+};
+renderFunctionOverview=function(){
+  const q=($("#functionSearch")?.value||"").toLowerCase(),filter=$("#functionStatusFilter")?.value||"";
+  const rows=activeRows("functions").filter(f=>!f.inactiveAt).filter(f=>{const m=f.memberId?byId("members",f.memberId):null,state=functionState(f);return(!q||`${f.title} ${groupName(f.groupId)} ${m?memberFullName(m):""}`.toLowerCase().includes(q))&&(!filter||(filter==="vacant"?!f.memberId:state===filter))});
+  $("#functionOverviewList").innerHTML=rows.length?rows.map(f=>{const m=f.memberId?byId("members",f.memberId):null;return `<div class="function-row"><div><b>${esc(f.title)}</b><small>${esc(groupName(f.groupId))}</small></div><div>${esc(m?memberFullName(m):"Nicht besetzt")}</div><div>${fmtDate(f.startDate)} – ${f.endDate?fmtDate(f.endDate):"offen"}</div><div><button class="action-link" data-edit-function="${f.id}">Bearbeiten</button> <button class="action-link danger-text" data-deactivate-function="${f.id}">${f.memberId||f.startDate?"Deaktivieren":"Löschen"}</button></div></div>`}).join(""):'<div class="empty">Keine Funktionen.</div>';
+  $$('[data-edit-function]').forEach(b=>b.onclick=()=>openFunctionModal(byId("functions",b.dataset.editFunction)));$$('[data-deactivate-function]').forEach(b=>b.onclick=()=>{const f=byId("functions",b.dataset.deactivateFunction);if(!f)return;if(f.memberId||f.startDate){if(confirm(`Funktion „${f.title}“ deaktivieren? Historische Daten bleiben erhalten.`)){f.inactiveAt=now();if(!f.endDate)f.endDate=todayStr();touch(f);saveLocal()}}else if(confirm(`Funktion „${f.title}“ in den Papierkorb verschieben?`)){markDeleted("functions",f.id);saveLocal()}});
+};
+openGroupModal=function(rec=null){const r=rec||{name:"",description:""};showModal(rec?"Gruppe bearbeiten":"Neue Gruppe",`<div class="form-grid"><label class="full">Gruppenname<input id="gName" value="${esc(r.name||"")}"></label><label class="full">Beschreibung<textarea id="gDescription" rows="4">${esc(r.description||"")}</textarea></label><div class="form-note full">Gruppen bilden die organisatorische Zugehörigkeit ab. Funktionen werden zentral als Rollen innerhalb einer Gruppe verwaltet.</div></div>`,()=>{const name=$("#gName").value.trim();if(!name)return false;const t=rec||{id:uid(),createdAt:now()};Object.assign(t,{name,description:$("#gDescription").value.trim(),type:"Gruppe",parentId:"",autoRule:{enabled:false,status:"",ageMin:"",ageMax:""}});delete t.inactiveAt;touch(t);if(!rec){db.groups.push(t);selectedGroupId=t.id}saveLocal();return true})};
+deleteSelectedGroup=function(){const g=recordById("groups",selectedGroupId);if(!g)return;const used=vp2GroupMembers(g.id).length+activeRows("functions").filter(f=>f.groupId===g.id).length+activeRows("tasks").filter(t=>t.groupId===g.id).length+activeRows("events").filter(e=>e.groupId===g.id).length;if(used){if(confirm(`Die Gruppe „${g.name}“ wird noch verwendet.\n\nGruppe deaktivieren? Bestehende Zuordnungen bleiben historisch erhalten.`)){g.inactiveAt=now();touch(g);selectedGroupId=null;saveLocal()}}else if(confirm(`Gruppe „${g.name}“ in den Papierkorb verschieben?`)){markDeleted("groups",g.id);selectedGroupId=null;saveLocal()}};
+openFunctionModal=function(rec=null,groupId=""){
+  const r=rec||{title:"",groupId:groupId||selectedGroupId||"",memberId:"",startDate:todayStr(),endDate:"",notes:""};
+  showModal(rec?"Funktion bearbeiten":"Neue Funktion",`<div class="form-grid"><label class="full">Funktion / Amt<input id="fnTitle" value="${esc(r.title||"")}" placeholder="z. B. 1. Vorsitzender, Kassierer, Jugendleiter"></label><label>Gruppe<select id="fnGroup">${groupOptions(r.groupId)}</select></label><label>Mitglied<select id="fnMember">${memberOptions(r.memberId)}</select></label><label>Beginn<input id="fnStart" type="date" value="${esc(r.startDate||"")}"></label><label>Ende<input id="fnEnd" type="date" value="${esc(r.endDate||"")}"></label><label class="full">Notizen<textarea id="fnNotes" rows="3">${esc(r.notes||"")}</textarea></label></div>`,()=>{const title=$("#fnTitle").value.trim(),gid=$("#fnGroup").value,start=$("#fnStart").value,end=$("#fnEnd").value;if(!title||!gid){alert("Bitte Funktion und Gruppe angeben.");return false}if(start&&end&&end<start){alert("Das Ende darf nicht vor dem Beginn liegen.");return false}const t=rec||{id:uid(),createdAt:now()},oldMember=t.memberId,oldEnd=t.endDate;Object.assign(t,{title,kind:"Funktion",groupId:gid,memberId:$("#fnMember").value,startDate:start,endDate:end,notes:$("#fnNotes").value.trim()});delete t.inactiveAt;touch(t);if(!rec)db.functions.push(t);if(t.memberId&&(!rec||oldMember!==t.memberId)){const m=byId("members",t.memberId);if(m){m.history=m.history||[];m.history.push({date:start||todayStr(),note:`Funktion übernommen: ${title} · ${groupName(gid)}`});touch(m)}}if(rec&&oldMember&&oldMember!==t.memberId){const m=byId("members",oldMember);if(m){m.history=m.history||[];m.history.push({date:todayStr(),note:`Funktion beendet: ${title} · ${groupName(gid)}`});touch(m)}}if(rec&&oldEnd!==end&&end&&t.memberId){const m=byId("members",t.memberId);if(m){m.history=m.history||[];m.history.push({date:end,note:`Funktion beendet: ${title} · ${groupName(gid)}`});touch(m)}}saveLocal();return true})
+};
+
+/* ---------- Finance read-only import ---------- */
+const vp2Euro=new Intl.NumberFormat("de-DE",{style:"currency",currency:"EUR"});
+function vp2ValidateFinanceSnapshot(x){
+  if(!x||typeof x!=="object")throw new Error("Die Datei enthält keine gültigen Finanzdaten.");if(x.kind!=="vplaner-finance-snapshot"||x.source!=="KassenKumpel")throw new Error("Diese Datei ist keine gültige KassenKumpel-Exportdatei.");if(Number(x.schemaVersion)!==1)throw new Error("Diese Exportversion wird vom V-Planer nicht unterstützt.");if(!Number.isInteger(Number(x.businessYear)))throw new Error("Das Geschäftsjahr fehlt oder ist ungültig.");if(!x.generatedAt||Number.isNaN(new Date(x.generatedAt).getTime()))throw new Error("Der Datenstand ist ungültig.");for(const v of [x.balances?.bank,x.balances?.cash,x.balances?.total,x.yearToDate?.income,x.yearToDate?.expenses,x.yearToDate?.result])if(typeof v!=="number"||!Number.isFinite(v))throw new Error("Die Finanzdaten sind unvollständig oder enthalten ungültige Zahlen.");return x;
+}
+async function vp2ImportFinanceFile(file){const text=await file.text();let data;try{data=JSON.parse(text)}catch{throw new Error("Die ausgewählte Datei ist keine gültige JSON-Datei.")}vp2ValidateFinanceSnapshot(data);const exists=db.financeSnapshots.some(s=>(data.exportId&&s.exportId===data.exportId)||(!data.exportId&&s.generatedAt===data.generatedAt&&s.businessYear===data.businessYear));if(exists){alert("Dieser Finanzstand wurde bereits importiert.");return}db.financeSnapshots.push(data);db.financeSnapshots.sort((a,b)=>String(a.generatedAt).localeCompare(String(b.generatedAt)));saveLocal();alert(`Finanzdaten erfolgreich aktualisiert.\n\nDatenstand: ${new Date(data.generatedAt).toLocaleString("de-DE")}`)}
+function renderFinanceReadOnly(){
+  const rows=(db.financeSnapshots||[]).slice().sort((a,b)=>String(b.generatedAt).localeCompare(String(a.generatedAt))),latest=rows[0];
+  const ids={financeTotal:latest?.balances?.total,financeBank:latest?.balances?.bank,financeCash:latest?.balances?.cash,financeIncome:latest?.yearToDate?.income,financeExpenses:latest?.yearToDate?.expenses,financeResult:latest?.yearToDate?.result};Object.entries(ids).forEach(([id,v])=>{const el=$("#"+id);if(el)el.textContent=typeof v==="number"?vp2Euro.format(v):"—"});
+  ["financeIncomeYear","financeExpensesYear","financeResultYear"].forEach(id=>{const el=$("#"+id);if(el)el.textContent=latest?`Geschäftsjahr ${latest.businessYear}`:"Laufendes Geschäftsjahr"});
+  const state=$("#financeDataState");if(state){if(!latest)state.textContent="Noch keine KassenKumpel-Daten importiert.";else{const age=Math.floor((Date.now()-new Date(latest.generatedAt).getTime())/86400000);state.textContent=`Datenstand: ${new Date(latest.generatedAt).toLocaleString("de-DE")} · Quelle: KassenKumpel${age>45?" · ⚠ Daten älter als 45 Tage":""}`}}
+  const h=$("#financeHistory");if(h)h.innerHTML=rows.length?rows.slice(0,24).map(s=>`<div class="finance-history-row"><div><b>${esc(String(s.businessYear))}</b><small>${new Date(s.generatedAt).toLocaleString("de-DE")}</small></div><span>${vp2Euro.format(s.balances.total)}</span><span>Einnahmen ${vp2Euro.format(s.yearToDate.income)}</span><span>Ausgaben ${vp2Euro.format(s.yearToDate.expenses)}</span></div>`).join(""):'<div class="empty">Noch keine Finanzstände importiert.</div>';
+}
+
+/* ---------- Settings ---------- */
+function vp2ApplyAppearance(){const mode=db.settings.appearance||"system",dark=mode==="dark"||(mode==="system"&&window.matchMedia?.("(prefers-color-scheme: dark)").matches);document.documentElement.dataset.v2Theme=dark?"dark":"light";document.body?.classList.toggle("vp2-dark",dark)}
+renderSettings=function(){
+  const c=db.settings.clubData||defaultDB().settings.clubData;$("#v2TaskDefault").value=db.settings.taskDefaultView||"list";$("#v2CalendarDefault").value=db.settings.calendarDefaultView||"month";$("#v2Appearance").value=db.settings.appearance||"system";$("#v2Scale").value=db.settings.uiScale||100;$("#v2ScaleLabel").textContent=`${db.settings.uiScale||100}%`;$("#v2ClubName").value=db.settings.clubName||"";$("#v2ClubShortName").value=c.shortName||"";$("#v2ClubFounded").value=c.foundedDate||"";$("#v2ClubEmail").value=c.contact?.email||"";$("#v2ClubPhone").value=c.contact?.phone||"";$("#v2ClubStreet").value=c.address?.street||"";$("#v2ClubZip").value=c.address?.zip||"";$("#v2ClubCity").value=c.address?.city||"";vp2ApplyAppearance()
+};
+function vp2SaveSettings(){
+  const c=db.settings.clubData||defaultDB().settings.clubData;db.settings.taskDefaultView=$("#v2TaskDefault").value;db.settings.calendarDefaultView=$("#v2CalendarDefault").value;db.settings.appearance=$("#v2Appearance").value;db.settings.uiScale=Number($("#v2Scale").value)||100;db.settings.clubName=$("#v2ClubName").value.trim();db.settings.clubData={...c,shortName:$("#v2ClubShortName").value.trim(),foundedDate:$("#v2ClubFounded").value,address:{...(c.address||{}),street:$("#v2ClubStreet").value.trim(),zip:$("#v2ClubZip").value.trim(),city:$("#v2ClubCity").value.trim()},contact:{...(c.contact||{}),email:$("#v2ClubEmail").value.trim(),phone:$("#v2ClubPhone").value.trim()}};db.settingsUpdatedAt=now();applyUiScale(db.settings.uiScale);vp2ApplyAppearance();saveLocal();alert("Einstellungen gespeichert.")
+}
+buildBackupPayload=function(){return {format:"V-Planer-Backup",backupVersion:2,appVersion:VP2_VERSION,exportedAt:now(),data:db}};
+const vp2LegacyCleanupBeforePermanentRemoval=cleanupBeforePermanentRemoval;
+cleanupBeforePermanentRemoval=function(collection,r){
+  vp2LegacyCleanupBeforePermanentRemoval(collection,r);
+  if(collection==="projects")allRows("events").filter(e=>e.projectId===r.id).forEach(e=>{e.projectId="";touch(e)});
+};
+
+/* ---------- Search and Trash cleanup ---------- */
+globalSearch=function(query){const q=String(query||"").trim().toLowerCase();if(q.length<2)return[];const tokens=q.split(/\s+/).filter(Boolean),types=["task","project","event","member","group","function","fine"],results=[];types.forEach(type=>{const meta=LINK_TYPE_META[type];activeRows(meta.collection).forEach(r=>{const hay=globalSearchText(type,r).toLowerCase();if(tokens.every(t=>hay.includes(t)))results.push({type,id:r.id,record:r})})});return results};
+renderGlobalSearch=function(){const input=$("#globalSearchInput"),box=$("#globalSearchResults"),q=input?.value||"";if(!box)return;if(q.trim().length<2){box.hidden=true;box.innerHTML="";return}const rows=globalSearch(q),types=["task","project","event","member","group","function","fine"],groups=types.map(type=>({type,rows:rows.filter(r=>r.type===type).slice(0,6)})).filter(x=>x.rows.length);box.innerHTML=groups.length?groups.map(g=>`<div class="global-search-group"><div class="global-search-group-title">${esc(LINK_TYPE_META[g.type].plural)}</div>${g.rows.map(x=>`<button class="global-search-hit" type="button" data-global-result="${x.type}" data-global-id="${x.id}"><span class="global-search-hit-icon">${LINK_TYPE_META[x.type].icon}</span><span class="global-search-hit-copy"><b>${esc(linkRecordTitle(x.type,x.record))}</b><small>${esc(linkRecordSubtitle(x.type,x.record))}</small></span></button>`).join("")}</div>`).join(""):`<div class="global-search-empty">Keine Treffer für „${esc(q)}“.</div>`;box.hidden=false};
+deletedTrashRows=function(){const allowed=["tasks","projects","events","members","groups","functions","fines"],rows=[];allowed.forEach(c=>(db[c]||[]).filter(r=>r.deletedAt&&!r.purgedAt).forEach(r=>{if(r.trashRootType==="project"&&c!=="projects")return;rows.push({collection:c,record:r})}));return rows.sort((a,b)=>String(b.record.deletedAt||"").localeCompare(String(a.record.deletedAt||"")))};
+
+/* ---------- Master render + bindings ---------- */
+renderAll=function(){applyModuleVisibility();renderDashboard();renderTasks();renderProjects();renderCalendar();renderYear();renderArchive();renderFinanceReadOnly();renderFines();renderMembers();renderGroups();renderTrash();renderSettings();requestAnimationFrame(()=>{vp2ApplyTaskView();vp2ApplyCalendarMode()})};
+
+// One-time UI bindings for 2.0
+// Some controls existed in 1.8.0 and already had anonymous listeners attached.
+// Clone those nodes once so the 2.0 behavior is not executed in parallel with legacy handlers.
+function vp2Fresh(id){const old=$("#"+id);if(!old)return null;const fresh=old.cloneNode(true);old.replaceWith(fresh);return fresh}
+const vp2PrevMonth=vp2Fresh("prevMonth"),vp2NextMonth=vp2Fresh("nextMonth"),vp2TodayMonth=vp2Fresh("todayMonth");
+const vp2SyncTop=vp2Fresh("syncBtn");
+const vp2EditGroup=vp2Fresh("editGroupBtn"),vp2DeleteGroup=vp2Fresh("deleteGroupBtn");
+const vp2NewFunction=vp2Fresh("newFunctionBtn"),vp2NewFunctionOverview=vp2Fresh("newFunctionOverviewBtn");
+const vp2FunctionSearch=vp2Fresh("functionSearch"),vp2FunctionStatus=vp2Fresh("functionStatusFilter");
+$("#taskListModeBtn")?.addEventListener("click",()=>vp2SetTaskView("list"));$("#taskKanbanModeBtn")?.addEventListener("click",()=>vp2SetTaskView("kanban"));
+$$('[data-calendar-mode]').forEach(b=>b.onclick=()=>vp2SetCalendarMode(b.dataset.calendarMode));
+vp2CalendarMode=localStorage.getItem(VP2_CAL_VIEW_KEY)||db.settings.calendarDefaultView||"month";
+[$("#calendarTypeFilter"),$("#calendarProjectFilter"),$("#calendarGroupFilter")].filter(Boolean).forEach(el=>el.addEventListener("change",renderCalendar));
+vp2PrevMonth.onclick=()=>{if(vp2CalendarMode==="day")calDate=new Date(calDate.getFullYear(),calDate.getMonth(),calDate.getDate()-1);else if(vp2CalendarMode==="week")calDate=new Date(calDate.getFullYear(),calDate.getMonth(),calDate.getDate()-7);else calDate=new Date(calDate.getFullYear(),calDate.getMonth()-1,1);renderCalendar()};
+vp2NextMonth.onclick=()=>{if(vp2CalendarMode==="day")calDate=new Date(calDate.getFullYear(),calDate.getMonth(),calDate.getDate()+1);else if(vp2CalendarMode==="week")calDate=new Date(calDate.getFullYear(),calDate.getMonth(),calDate.getDate()+7);else calDate=new Date(calDate.getFullYear(),calDate.getMonth()+1,1);renderCalendar()};
+vp2TodayMonth.onclick=()=>{calDate=new Date();renderCalendar()};
+$$('[data-year-filter]').forEach(b=>b.onclick=()=>{vp2YearFilter=b.dataset.yearFilter;renderYear()});
+$("#saveYearNoteBtn")?.addEventListener("click",()=>{const y=calDate.getFullYear();db.settings.yearNotes=db.settings.yearNotes||{};db.settings.yearNotes[y]=$("#yearNote").value.trim();saveLocal();alert("Jahresnotiz gespeichert.")});
+$("#archiveSearch")?.addEventListener("input",renderArchive);$("#archiveYearFilter")?.addEventListener("change",renderArchive);
+$("#financeImportBtn")?.addEventListener("click",()=>$("#financeImportInput").click());$("#financeImportInput")?.addEventListener("change",async e=>{const file=e.target.files?.[0];if(!file)return;try{await vp2ImportFinanceFile(file)}catch(err){alert(`Import nicht möglich:\n${err.message}`)}finally{e.target.value=""}});
+$("#dashboardSyncBtn")?.addEventListener("click",()=>vp2SyncAllGoogle());if(vp2SyncTop)vp2SyncTop.onclick=()=>vp2SyncAllGoogle();
+$$('[data-settings-v2]').forEach(b=>b.onclick=()=>{$$('[data-settings-v2]').forEach(x=>x.classList.toggle("active",x===b));$$('[data-settings-v2-panel]').forEach(x=>x.classList.toggle("active",x.dataset.settingsV2Panel===b.dataset.settingsV2))});
+$("#v2Scale")?.addEventListener("input",()=>{$("#v2ScaleLabel").textContent=`${$("#v2Scale").value}%`;applyUiScale($("#v2Scale").value)});$("#v2ScaleReset")?.addEventListener("click",()=>{$("#v2Scale").value=100;$("#v2ScaleLabel").textContent="100%";applyUiScale(100)});$("#v2SaveSettings")?.addEventListener("click",vp2SaveSettings);$("#v2BackupExport")?.addEventListener("click",()=>exportFullBackup());$("#v2BackupImport")?.addEventListener("click",()=>$("#backupImportInput").click());
+$("#v2DisconnectGoogle")?.addEventListener("click",()=>{if(!confirm("Google-Verbindungen auf diesem Gerät trennen?"))return;accessToken="";tokenExpiresAt=0;localStorage.removeItem(DRIVE_GRANT_KEY);disconnectGoogleCalendar();renderDashboardStorage()});
+if(vp2EditGroup)vp2EditGroup.onclick=()=>{const g=recordById("groups",selectedGroupId);if(g)openGroupModal(g)};if(vp2DeleteGroup)vp2DeleteGroup.onclick=deleteSelectedGroup;
+if(vp2NewFunction)vp2NewFunction.onclick=()=>openFunctionModal(null,selectedGroupId||"");if(vp2NewFunctionOverview)vp2NewFunctionOverview.onclick=()=>openFunctionModal(null,selectedGroupId||"");
+if(vp2FunctionSearch)vp2FunctionSearch.oninput=renderFunctionOverview;if(vp2FunctionStatus)vp2FunctionStatus.onchange=renderFunctionOverview;
+
+// Default views when entering the sections for the first time.
+if(!localStorage.getItem(VP2_TASK_VIEW_KEY))localStorage.setItem(VP2_TASK_VIEW_KEY,db.settings.taskDefaultView||"list");
+vp2ApplyAppearance();
+
 
 applyUiScale();
 
