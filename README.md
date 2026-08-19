@@ -1,4 +1,12 @@
-# V-Planer 2.1.1
+# V-Planer 2.1.2
+
+
+## Änderungen in 2.1.2
+
+- Terminerstellung und Terminbearbeitung verwenden nur noch 10 feste Farbkacheln.
+- Die Palette besteht aus 5 kräftigen Farben und 5 passenden Pastelltönen.
+- Freie Farbauswahl, Farbnamen und Farbcodes sind in der Terminmaske nicht mehr sichtbar.
+- Alle Farbkacheln sind gleich groß und die gewählte Farbe wird nur über die Auswahlmarkierung hervorgehoben.
 
 ## Änderungen in 2.1.1
 
@@ -193,3 +201,40 @@ Der Bereich Strafen wurde in diesem Konsolidierungsschritt bewusst aus Version 1
 - Gruppendetails zeigen Funktionen und Mitglieder klar getrennt.
 - Funktionen verwenden eine einheitliche Listenansicht mit Suche, Zeitraumfilter und Status.
 - Allgemeine Büroklammer-/Verknüpfungsanzeige in der Funktionsansicht entfernt.
+
+
+## V-Planer 2.1.3
+
+- Veralteten Hinweisblock „Noch kein Termin verknüpft“ aus allen Projektkarten entfernt.
+- Die Terminzuordnung bleibt in der Projektbearbeitung und den Termindetails erhalten.
+- Statusfilter Geplant/Aktiv/Abgeschlossen/Alle beeinflussen nur noch die Projektauswahl und erzeugen keine zusätzlichen Termin-Hinweise mehr.
+
+
+## V-Planer 2.1.4
+
+- Projekte werden in der Projektübersicht automatisch nach Fälligkeit sortiert.
+- Bei gleicher Fälligkeit entscheidet die im Projekt unter „Termin“ hinterlegte Von-Uhrzeit über die Reihenfolge.
+- Projekte mit konkreter Startzeit stehen am selben Tag vor Projekten ohne Uhrzeit.
+- Dieselbe Sortierung gilt auf der Übersicht bei „Aktive Projekte“, ohne die bestehende Anzeige zu verändern.
+
+## V-Planer 2.1.5
+
+- Google Drive und Google Kalender verwenden nach der Verbindung einen gemeinsamen Google-OAuth-Ablauf.
+- Der automatische Hintergrundabgleich synchronisiert waehrend einer aktiven Google-Sitzung jetzt sowohl Drive als auch Kalender im eingestellten Intervall.
+- Lokale Aenderungen an Terminen stossen weiterhin kurzfristig einen Kalenderabgleich an.
+- Die ID des von V-Planer angelegten Google-Kalenders wird nun zusaetzlich im Drive-synchronisierten V-Planer-Datenbestand gespeichert.
+- Weitere Browser/Tabs/Geraete koennen dadurch denselben vorhandenen V-Planer-Kalender wiederverwenden, statt bei fehlender lokaler ID einen weiteren Kalender anzulegen.
+- Vor einer Neuanlage wird jede bekannte Kalender-ID validiert. Erst wenn kein bekannter Kalender mehr existiert, wird ein neuer V-Planer-Kalender angelegt.
+- Wenn der V-Planer-Kalender in Google manuell geloescht wurde, wird beim naechsten erfolgreichen Sync genau ein neuer Kalender erzeugt und dessen ID wieder zentral gespeichert.
+- Drive-Synchronisationen speichern nun ebenfalls einen sichtbaren Zeitstempel fuer den letzten erfolgreichen Abgleich.
+
+Hinweis: Die statische Browser-App verwendet das Google Identity Services Token-Modell. Nach einem vollstaendigen Neuladen/Neustart oder nach Ablauf des Google-Zugriffstokens kann Google aus Sicherheitsgruenden erneut eine Nutzergeste verlangen. Danach laufen Drive und Kalender wieder automatisch gemeinsam weiter.
+
+
+## V-Planer 2.1.6
+
+- Alle Hinweisbanner im oberen Bereich der Übersicht können jetzt einzeln über „×“ ausgeblendet werden.
+- Dies gilt neben Geburtstagen und Jubiläen auch für Hinweise zu überfälligen Aufgaben und Projekten kurz vor dem Projektende.
+- Das Ausblenden betrifft ausschließlich den Hinweisbanner; die zugehörigen Aufgaben, Projekte und sonstigen Inhalte bleiben unverändert sichtbar.
+- Projektende-Hinweise bleiben für die aktuell betroffenen Projekte ausgeblendet, bis sich die betroffene Projektmenge ändert oder der relevante Zeitraum endet.
+- Ein ausgeblendeter Überfällig-Hinweis erscheint wieder, sobald sich die Menge der überfälligen Aufgaben ändert.

@@ -5,9 +5,10 @@ const CFG = window.VP_CONFIG || {};
 const STORAGE_KEY = "v-planer-cloud-v1.0";
 const DRIVE_GRANT_KEY = "v-planer-drive-grant-known-v1";
 const APPDATA_FILE = "v-planer-data-v1.0.json";
-const SCOPES = "https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/drive.file";
+const GOOGLE_SCOPES = "https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/calendar.app.created";
+const SCOPES = GOOGLE_SCOPES;
 
-const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.app.created";
+const CALENDAR_SCOPE = GOOGLE_SCOPES;
 const CALENDAR_GRANT_KEY = "v-planer-calendar-grant-known-v1";
 const CALENDAR_ID_KEY = "v-planer-google-calendar-id-v1";
 const CALENDAR_PREFS_KEY = "v-planer-google-calendar-prefs-v1";
@@ -27,7 +28,7 @@ const ageAt = (birth, onDate=new Date()) => { if(!birth) return null; const b=ne
 
 function defaultDB(){
   return {
-    version:8, updatedAt:now(), settingsUpdatedAt:now(),
+    version:8, updatedAt:now(), settingsUpdatedAt:now(), googleCalendarId:"", googleCalendarUpdatedAt:"",
     settings:{
       clubName:"Mein Verein", userRole:"Vorstand", uiScale:100, storageLimitGB:CFG.DEFAULT_STORAGE_LIMIT_GB||5, compressImages:true, honoraryContributionFree:false,
       clubData:{
@@ -153,7 +154,7 @@ let accessToken="", tokenClient=null, rootFolderId="", syncTimer=null, cloudQuot
 let tokenExpiresAt=0, tokenWaiter=null;
 
 let calendarAccessToken="", calendarTokenClient=null, calendarTokenExpiresAt=0, calendarTokenWaiter=null;
-let calendarSyncTimer=null, calendarSyncRunning=false;
+let calendarSyncTimer=null, calendarSyncRunning=false, calendarEnsurePromise=null;
 
 function allRows(collection){ return db[collection].filter(x=>!x.deletedAt); }
 function activeRows(collection){
@@ -190,10 +191,20 @@ function saveCalendarPrefs(prefs){
 }
 function hasKnownCalendarGrant(){return localStorage.getItem(CALENDAR_GRANT_KEY)==="1"}
 function hasUsableCalendarToken(){return !!calendarAccessToken && Date.now()<calendarTokenExpiresAt}
-function googleCalendarId(){return localStorage.getItem(CALENDAR_ID_KEY)||""}
+function googleCalendarId(){
+  return String(db.googleCalendarId||localStorage.getItem(CALENDAR_ID_KEY)||"").trim();
+}
 function setGoogleCalendarId(id){
-  if(id)localStorage.setItem(CALENDAR_ID_KEY,id);
+  const clean=String(id||"").trim();
+  if(clean)localStorage.setItem(CALENDAR_ID_KEY,clean);
   else localStorage.removeItem(CALENDAR_ID_KEY);
+  if(db.googleCalendarId!==clean){
+    db.googleCalendarId=clean;
+    db.googleCalendarUpdatedAt=now();
+    db.updatedAt=now();
+    localStorage.setItem(STORAGE_KEY,JSON.stringify(db));
+    if(hasUsableAccessToken())scheduleAutoSync();
+  }
 }
 function calendarTimeZone(){
   return Intl.DateTimeFormat().resolvedOptions().timeZone||"Europe/Berlin";
@@ -357,7 +368,12 @@ function initCalendarTokenClient(){
         }
         calendarAccessToken=r.access_token||"";
         calendarTokenExpiresAt=Date.now()+Math.max(60,(Number(r.expires_in)||3600)-60)*1000;
+        // Seit 2.1.5 werden Drive und Kalender mit demselben Google-Token verbunden.
+        accessToken=calendarAccessToken;
+        tokenExpiresAt=calendarTokenExpiresAt;
         localStorage.setItem(CALENDAR_GRANT_KEY,"1");
+        localStorage.setItem(DRIVE_GRANT_KEY,"1");
+        startPoll();
         if(calendarTokenWaiter){calendarTokenWaiter.resolve(calendarAccessToken);calendarTokenWaiter=null}
         renderCalendarSyncSettings();
       },
@@ -377,6 +393,12 @@ function initCalendarTokenClient(){
 }
 function ensureCalendarAccess(){
   if(hasUsableCalendarToken())return Promise.resolve(calendarAccessToken);
+  if(hasUsableAccessToken()){
+    calendarAccessToken=accessToken;
+    calendarTokenExpiresAt=tokenExpiresAt;
+    localStorage.setItem(CALENDAR_GRANT_KEY,"1");
+    return Promise.resolve(calendarAccessToken);
+  }
   calendarAccessToken="";calendarTokenExpiresAt=0;
   if(calendarTokenWaiter)return Promise.reject(new Error("Google-Kalender-Verbindung wird bereits hergestellt."));
   return new Promise((resolve,reject)=>{
@@ -401,6 +423,8 @@ async function calendarFetch(url,opt={}){
   const response=await fetch(url,{...opt,headers});
   if(response.status===401){
     calendarAccessToken="";calendarTokenExpiresAt=0;
+    accessToken="";tokenExpiresAt=0;
+    clearInterval(window.__vpPoll);
     renderCalendarSyncSettings();
     const err=new Error("Google-Kalender-Zugriff ist abgelaufen. Bitte erneut verbinden.");
     err.code="CALENDAR_AUTH_REQUIRED";
@@ -428,31 +452,42 @@ async function validateGoogleCalendar(calendarId){
   }
 }
 async function ensureVPlanerGoogleCalendar(){
-  let id=googleCalendarId();
-  if(id){
-    const valid=await validateGoogleCalendar(id).catch(e=>{
-      if(e.status===404)return false;
-      throw e;
-    });
-    if(valid)return id;
+  if(calendarEnsurePromise)return calendarEnsurePromise;
+  calendarEnsurePromise=(async()=>{
+    // Die Kalender-ID wird sowohl lokal als auch im Drive-synchronisierten Datenbestand gehalten.
+    // Dadurch verwenden weitere Tabs/Geraete denselben V-Planer-Kalender, statt einen neuen anzulegen.
+    const candidates=[db.googleCalendarId,localStorage.getItem(CALENDAR_ID_KEY)].map(x=>String(x||"").trim()).filter(Boolean);
+    for(const id of [...new Set(candidates)]){
+      const valid=await validateGoogleCalendar(id).catch(e=>{
+        if(e.status===404||e.status===410)return false;
+        throw e;
+      });
+      if(valid){
+        setGoogleCalendarId(id);
+        return id;
+      }
+    }
+
+    // Keine der bekannten IDs existiert noch (z. B. nach manuellem Loeschen in Google).
+    // Erst jetzt wird genau ein neuer Kalender erzeugt.
     setGoogleCalendarId("");
-    id="";
-  }
+    const prefs=calendarPrefs();
+    const created=await (await calendarFetch("https://www.googleapis.com/calendar/v3/calendars",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        summary:prefs.calendarName||"V-Planer",
+        description:"V-Planer – automatisch verwalteter Kalender. Bitte nicht mehrfach anlegen.",
+        timeZone:calendarTimeZone()
+      })
+    })).json();
 
-  const prefs=calendarPrefs();
-  const created=await (await calendarFetch("https://www.googleapis.com/calendar/v3/calendars",{
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({
-      summary:prefs.calendarName||"V-Planer",
-      description:"V-Planer – Dein Verein. Einfach organisiert.",
-      timeZone:calendarTimeZone()
-    })
-  })).json();
-
-  if(!created.id)throw new Error("Google Kalender wurde erstellt, aber es wurde keine Kalender-ID zurückgegeben.");
-  setGoogleCalendarId(created.id);
-  return created.id;
+    if(!created.id)throw new Error("Google Kalender wurde erstellt, aber es wurde keine Kalender-ID zurückgegeben.");
+    setGoogleCalendarId(created.id);
+    return created.id;
+  })();
+  try{return await calendarEnsurePromise}
+  finally{calendarEnsurePromise=null}
 }
 async function listVPlanerGoogleEvents(calendarId){
   const result=[];
@@ -1831,26 +1866,13 @@ function renderProjects(){
       if(a.status!=="done"&&b.status==="done")return -1;
       return (a.due||"9999").localeCompare(b.due||"9999");
     });
-    const st=projectTaskStats(p.id),linkedEvent=linkedEventForProject(p);
+    const st=projectTaskStats(p.id);
     return `<div class="card project-card project-card-with-tasks">
       <div class="row"><h3>${esc(p.name)}</h3>${statusBadge(p.status)}</div>
       <p>${esc(p.description||"Keine Beschreibung hinterlegt.")}</p>
       <div class="mini-meta">${esc(groupName(p.groupId))} · Projektzeitraum: ${esc(projectDateRangeText(p))}</div>
       <div class="project-days ${projectDayClass(projectEndDate(p))}">${projectEndDate(p)?esc(dueText(projectEndDate(p))):"ohne Zeitraum"}</div>
 
-      <div class="project-linked-event ${linkedEvent?"has-event":""}">
-        <div class="project-linked-event-icon">${linkedEvent?"●":"○"}</div>
-        <div class="project-linked-event-copy">
-          <b>${linkedEvent?"Zugehöriger Termin":"Noch kein Termin verknüpft"}</b>
-          <span>${linkedEvent?`${esc(linkedEvent.title)} · ${esc(projectEventSummary(linkedEvent))}`:"Das Projekt organisiert die Arbeit. Der Termin bildet das tatsächliche Ereignis ab."}</span>
-        </div>
-        <div class="project-linked-event-actions">
-          ${linkedEvent
-            ?`<button class="btn tiny secondary" type="button" data-open-project-event="${p.id}">Termin öffnen</button>
-              <button class="btn tiny ghost" type="button" data-unlink-project-event="${p.id}">Verknüpfung lösen</button>`
-            :`<button class="btn tiny secondary" type="button" data-create-project-event="${p.id}">+ Termin zum Projekt</button>`}
-        </div>
-      </div>
 
       <div class="project-progress-head">
         <span><b>${st.progress}%</b> Gesamtfortschritt</span>
@@ -1885,23 +1907,6 @@ function renderProjects(){
       touch(t);
       saveLocal();
     }
-  });
-  $$('[data-create-project-event]').forEach(el=>el.onclick=()=>{
-    const p=byId("projects",el.dataset.createProjectEvent);
-    if(p)openEventForProject(p);
-  });
-  $$('[data-open-project-event]').forEach(el=>el.onclick=()=>{
-    const p=byId("projects",el.dataset.openProjectEvent);
-    const e=linkedEventForProject(p);
-    if(e)showEventDetails(e);
-  });
-  $$('[data-unlink-project-event]').forEach(el=>el.onclick=()=>{
-    const p=byId("projects",el.dataset.unlinkProjectEvent);
-    const e=linkedEventForProject(p);
-    if(!p||!e)return;
-    if(!confirm(`Termin „${e.title}“ vom Projekt „${p.name}“ trennen?\n\nProjekt und Termin bleiben beide erhalten.`))return;
-    detachProjectEvent(p,e);
-    saveLocal();
   });
   $$('[data-edit-project]').forEach(el=>el.onclick=()=>openProjectModal(byId("projects",el.dataset.editProject)));
   $$('[data-archive-project]').forEach(el=>el.onclick=()=>archiveProject(el.dataset.archiveProject));
@@ -4562,6 +4567,15 @@ function mergeDB(local,cloud){
     out.financeKassenKumpelState=cloud.financeKassenKumpelState||null;
     out.financeKassenKumpelUpdatedAt=cloud.financeKassenKumpelUpdatedAt||"";
   }
+  const localCalendarStamp=new Date(local.googleCalendarUpdatedAt||0).getTime();
+  const cloudCalendarStamp=new Date(cloud.googleCalendarUpdatedAt||0).getTime();
+  if(cloudCalendarStamp>localCalendarStamp){
+    out.googleCalendarId=cloud.googleCalendarId||"";
+    out.googleCalendarUpdatedAt=cloud.googleCalendarUpdatedAt||"";
+  }else{
+    out.googleCalendarId=local.googleCalendarId||cloud.googleCalendarId||"";
+    out.googleCalendarUpdatedAt=local.googleCalendarUpdatedAt||cloud.googleCalendarUpdatedAt||"";
+  }
   out.counters={memberNo:Math.max(local.counters?.memberNo||1,cloud.counters?.memberNo||1)};
   out.updatedAt=now();
   return out;
@@ -4583,7 +4597,11 @@ function initTokenClient(){
         }
         accessToken=r.access_token||"";
         tokenExpiresAt=Date.now()+Math.max(60,(Number(r.expires_in)||3600)-60)*1000;
+        calendarAccessToken=accessToken;
+        calendarTokenExpiresAt=tokenExpiresAt;
         localStorage.setItem(DRIVE_GRANT_KEY,"1");
+        localStorage.setItem(CALENDAR_GRANT_KEY,"1");
+        startPoll();
         if(tokenWaiter){ tokenWaiter.resolve(accessToken); tokenWaiter=null; }
         $("#lastSync").textContent="Drive verbunden";
         renderStorage();
@@ -4606,6 +4624,12 @@ function initTokenClient(){
 
 function ensureDriveAccess(){
   if(hasUsableAccessToken())return Promise.resolve(accessToken);
+  if(hasUsableCalendarToken()){
+    accessToken=calendarAccessToken;
+    tokenExpiresAt=calendarTokenExpiresAt;
+    localStorage.setItem(DRIVE_GRANT_KEY,"1");
+    return Promise.resolve(accessToken);
+  }
   accessToken=""; tokenExpiresAt=0;
   if(tokenWaiter)return Promise.reject(new Error("Google Drive-Verbindung wird bereits hergestellt."));
   return new Promise((resolve,reject)=>{
@@ -4639,6 +4663,7 @@ async function driveFetch(url,opt={}){
   const r=await fetch(url,{...opt,headers:h});
   if(r.status===401){
     accessToken=""; tokenExpiresAt=0;
+    calendarAccessToken=""; calendarTokenExpiresAt=0;
     clearInterval(window.__vpPoll);
     $("#lastSync").textContent="Drive-Verbindung abgelaufen – erneut synchronisieren";
     renderStorage();
@@ -4671,6 +4696,7 @@ async function syncDrive(silent=false){
   if(!f){
     const id=await createAppData();
     await uploadAppData(id);
+    localStorage.setItem("v-planer-last-sync-v1",now());
     $("#lastSync").textContent=`Erster Cloud-Stand · ${new Date().toLocaleTimeString("de-DE")}`;
     renderStorage();
     return;
@@ -4682,13 +4708,23 @@ async function syncDrive(silent=false){
   localStorage.setItem(STORAGE_KEY,JSON.stringify(db));
   await uploadAppData(f.id,db);
   renderAll();
+  localStorage.setItem("v-planer-last-sync-v1",now());
   $("#lastSync").textContent=`Aktuell · ${new Date().toLocaleTimeString("de-DE")}`;
 }
 
 function startPoll(){
   clearInterval(window.__vpPoll);
-  window.__vpPoll=setInterval(()=>{
-    if(hasUsableAccessToken())syncDrive(true).catch(()=>{});
+  window.__vpPoll=setInterval(async()=>{
+    if(window.__vpGoogleAutoSyncRunning)return;
+    window.__vpGoogleAutoSyncRunning=true;
+    try{
+      // Drive und Kalender laufen bewusst nacheinander, damit beide denselben lokalen Datenstand sehen.
+      if(hasUsableAccessToken())await syncDrive(true).catch(e=>console.warn("Drive-Auto-Sync",e));
+      if(hasUsableCalendarToken())await vp2SyncGoogleCalendarOneWay().catch(e=>console.warn("Kalender-Auto-Sync",e));
+      renderDashboardStorage();
+    }finally{
+      window.__vpGoogleAutoSyncRunning=false;
+    }
   },Math.max(15,CFG.AUTO_SYNC_SECONDS||30)*1000);
 }
 $("#syncBtn").onclick=()=>syncDrive(false).catch(e=>alert(e.message));
@@ -5968,7 +6004,7 @@ function decorateLinkButtons(){
    Uses the 1.8.0 data model for migration safety, but exposes
    the streamlined 2.0 workflow defined for this project.
    ========================================================= */
-const VP2_VERSION="2.1.1";
+const VP2_VERSION="2.1.6";
 const VP2_TASK_VIEW_KEY="v-planer-task-view-v2";
 const VP2_CAL_VIEW_KEY="v-planer-calendar-view-v2";
 let vp2YearFilter="";
@@ -6076,10 +6112,17 @@ renderDashboard=function(){
   $("#metricMembers").textContent=members.length;$("#metricMemberHint").textContent=`${members.filter(m=>m.status==="active").length} aktiv`;
 
   const alertItems=[];
-  const overdue=open.filter(t=>daysUntil(t.due)<0).length;
-  if(overdue)alertItems.push({icon:"⚠",text:`${overdue} überfällige Aufgabe${overdue===1?"":"n"}`});
-  const ending=activeProjects.filter(p=>{const d=daysUntil(projectEndDate(p));return d!==null&&d>=0&&d<=db.settings.reminders.alarmDays}).length;
-  if(ending)alertItems.push({icon:"◆",text:`${ending} aktive${ending===1?"s Projekt":" Projekte"} kurz vor dem Projektende`});
+  const overdueTasks=open.filter(t=>daysUntil(t.due)<0);
+  if(overdueTasks.length){
+    const key=`summary:overdue:${overdueTasks.map(t=>`${t.id}:${t.due||""}`).sort().join("|")}`;
+    if(!dashboardNoticeDismissed(key))alertItems.push({icon:"⚠",text:`${overdueTasks.length} überfällige Aufgabe${overdueTasks.length===1?"":"n"}`,dismissKey:key,until:"9999-12-31"});
+  }
+  const endingProjects=activeProjects.filter(p=>{const d=daysUntil(projectEndDate(p));return d!==null&&d>=0&&d<=db.settings.reminders.alarmDays});
+  if(endingProjects.length){
+    const key=`summary:project-ending:${endingProjects.map(p=>`${p.id}:${projectEndDate(p)||""}`).sort().join("|")}`;
+    const until=endingProjects.map(p=>projectEndDate(p)).filter(Boolean).sort().pop()||todayStr();
+    if(!dashboardNoticeDismissed(key))alertItems.push({icon:"◆",text:`${endingProjects.length} aktive${endingProjects.length===1?"s Projekt":" Projekte"} kurz vor dem Projektende`,dismissKey:key,until});
+  }
   upcomingRoundBirthdays(30).forEach(item=>{const key=personalDashboardDismissKey(item);if(!dashboardNoticeDismissed(key))alertItems.push({icon:"🎉",text:`${memberFullName(item)} wird ${item._age} Jahre`,dismissKey:key,until:item._date})});
   upcomingJubilees(30).forEach(item=>{const key=personalDashboardDismissKey(item);if(!dashboardNoticeDismissed(key))alertItems.push({icon:"★",text:`${memberFullName(item)}: ${item._years} Jahre Vereinszugehörigkeit`,dismissKey:key,until:item._date})});
   const alertStrip=$("#alertStrip"); alertStrip.classList.toggle("hidden",!alertItems.length); alertStrip.innerHTML=dashboardAlertHTML(alertItems);
@@ -6089,7 +6132,7 @@ renderDashboard=function(){
   $("#dashboardTasks").innerHTML=list.length?list.map(t=>`<div class="mini-row"><input type="checkbox" data-finish-task="${t.id}" aria-label="Aufgabe erledigen"><div><div class="mini-title">${esc(t.title)}</div><div class="mini-meta">${esc(projectName(t.projectId))} · ${esc(groupName(t.groupId))}</div></div><span class="badge ${reminderClass(t.due)}">${esc(dueText(t.due))}</span></div>`).join(""):`<div class="empty">Keine offenen Aufgaben.</div>`;
   $$('[data-finish-task]').forEach(el=>el.onchange=()=>{const t=byId("tasks",el.dataset.finishTask);if(t){t.status="done";touch(t);saveLocal()}});
 
-  $("#dashboardProjects").innerHTML=activeProjects.length?activeProjects.slice().sort((a,b)=>(projectStartDate(a)||"9999").localeCompare(projectStartDate(b)||"9999")).slice(0,3).map(p=>{const st=projectTaskStats(p.id),end=projectEndDate(p),group=groupName(p.groupId),dateText=end?`Ende ${fmtDate(end)}`:projectDateRangeText(p),taskText=st.total?`${st.done} von ${st.total} Aufgaben erledigt`:"Keine Aufgaben vorhanden";return `<button class="dashboard-project-row" type="button" data-dashboard-project="${p.id}"><div class="dashboard-project-title-row"><div class="dashboard-project-title">${esc(p.name)}</div><span class="project-days dashboard-project-days ${projectDayClass(end)}">${end?esc(dueText(end)):"ohne Zeitraum"}</span></div><div class="dashboard-project-meta">${esc(group)}${dateText?` · ${esc(dateText)}`:""}</div><div class="dashboard-project-task-state">${esc(taskText)}</div>${st.total?`<div class="progress dashboard-project-progress"><span style="width:${st.progress}%"></span></div>`:""}</button>`}).join(""):`<div class="empty">Keine aktiven Projekte.</div>`;
+  $("#dashboardProjects").innerHTML=activeProjects.length?activeProjects.slice().sort(vp214CompareProjectsByDue).slice(0,3).map(p=>{const st=projectTaskStats(p.id),end=projectEndDate(p),group=groupName(p.groupId),dateText=end?`Ende ${fmtDate(end)}`:projectDateRangeText(p),taskText=st.total?`${st.done} von ${st.total} Aufgaben erledigt`:"Keine Aufgaben vorhanden";return `<button class="dashboard-project-row" type="button" data-dashboard-project="${p.id}"><div class="dashboard-project-title-row"><div class="dashboard-project-title">${esc(p.name)}</div><span class="project-days dashboard-project-days ${projectDayClass(end)}">${end?esc(dueText(end)):"ohne Zeitraum"}</span></div><div class="dashboard-project-meta">${esc(group)}${dateText?` · ${esc(dateText)}`:""}</div><div class="dashboard-project-task-state">${esc(taskText)}</div>${st.total?`<div class="progress dashboard-project-progress"><span style="width:${st.progress}%"></span></div>`:""}</button>`}).join(""):`<div class="empty">Keine aktiven Projekte.</div>`;
   $$('[data-dashboard-project]').forEach(btn=>btn.onclick=()=>{const p=byId("projects",btn.dataset.dashboardProject);if(p){go("projects");showProjectDetails(p)}});
 
   const personal=[...upcomingBirthdays(60).map(m=>{const info=nextRecurringInfo(m.birthDate);return {...m,_kind:"birthday",_date:info.date,_days:info.days,_age:info.year-Number(m.birthDate.slice(0,4))}}),...upcomingJubilees(365)].sort((a,b)=>a._days-b._days).slice(0,10);
@@ -6144,8 +6187,8 @@ googleCalendarBody=function(type,rec){
 async function vp2SyncAllGoogle(){
   const buttons=[$("#syncBtn"),$("#dashboardSyncBtn")].filter(Boolean);buttons.forEach(b=>{b.disabled=true;b.textContent="↻ Synchronisierung läuft …"});
   const errors=[];
-  try{await ensureDriveAccess();await syncDrive(false)}catch(e){errors.push(`Drive: ${e.message}`)}
-  try{await vp2SyncGoogleCalendarOneWay()}catch(e){errors.push(`Kalender: ${e.message}`)}
+  try{await ensureDriveAccess();startPoll();await syncDrive(false)}catch(e){errors.push(`Drive: ${e.message}`)}
+  try{await vp2SyncGoogleCalendarOneWay();if(hasUsableAccessToken())scheduleAutoSync()}catch(e){errors.push(`Kalender: ${e.message}`)}
   buttons.forEach(b=>{b.disabled=false;b.textContent="↻ Alles synchronisieren"});renderDashboardStorage();
   if(errors.length)alert(`Synchronisierung teilweise fehlgeschlagen:\n\n${errors.join("\n\n")}`);
 }
@@ -6250,7 +6293,7 @@ openProjectModal=function(rec=null){
 };
 renderProjects=function(){
   const q=($("#projectSearch")?.value||"").toLowerCase(),f=$("#projectStatusFilter")?.value||"";
-  const rows=activeRows("projects").filter(p=>(!q||`${p.name} ${p.description||""} ${p.notes||""}`.toLowerCase().includes(q))&&(!f||p.status===f));
+  const rows=activeRows("projects").filter(p=>(!q||`${p.name} ${p.description||""} ${p.notes||""}`.toLowerCase().includes(q))&&(!f||p.status===f)).sort(vp214CompareProjectsByDue);
   $("#projectGrid").innerHTML=rows.length?rows.map(p=>{const st=projectTaskStats(p.id),next=vp2ProjectNextEvent(p.id),allDone=st.total>0&&st.open===0;return `<div class="card project-card project-card-v2"><div class="row"><h3>${esc(p.name)}</h3>${statusBadge(p.status)}</div><p>${esc(p.description||"Keine Beschreibung hinterlegt.")}</p><div class="mini-meta">${esc(groupName(p.groupId))} · ${esc(projectDateRangeText(p))}</div><div class="project-progress-head"><span>${st.total?`<b>${st.progress}%</b> Fortschritt`:"Noch keine Aufgaben"}</span><span>${st.done}/${st.total} erledigt</span></div>${st.total?`<div class="progress"><span style="width:${st.progress}%"></span></div>`:""}<div class="project-card-info"><span><b>${st.open}</b> offen</span><span><b>${vp2ProjectEvents(p.id).length}</b> Termine</span><span><b>${next?fmtShort(eventStartDate(next)):"—"}</b> nächster Termin</span></div>${allDone&&p.status!=="closed"?`<div class="project-complete-hint">✓ Alle Aufgaben erledigt. <button class="action-link" data-close-project="${p.id}">Projekt abschließen</button></div>`:""}<div class="row project-card-actions"><button class="btn tiny primary" data-open-project="${p.id}" type="button">Projekt öffnen</button><span><button class="action-link" data-edit-project="${p.id}">Bearbeiten</button>${p.status==="closed"?` <button class="action-link archive-link" data-archive-project="${p.id}">Archivieren</button>`:""} <button class="action-link danger-text" data-delete-project="${p.id}">Löschen</button></span></div></div>`}).join(""):`<div class="empty">Keine Projekte.</div>`;
   $$('[data-open-project]').forEach(b=>b.onclick=()=>showProjectDetails(byId("projects",b.dataset.openProject)));
   $$('[data-edit-project]').forEach(b=>b.onclick=()=>openProjectModal(byId("projects",b.dataset.editProject)));
@@ -6670,6 +6713,26 @@ function vp209ProjectEventTimeText(project){
   if(start)return `${start} Uhr`;
   return "";
 }
+
+/* V-Planer 2.1.4: Projekte nach Faelligkeit, am selben Tag nach Termin-Von-Uhrzeit */
+function vp214ProjectDueDate(project){
+  return projectEndDate(project)||project?.eventDate||projectStartDate(project)||"";
+}
+function vp214ProjectStartTimeForSort(project,sortDate=""){
+  const time=String(project?.eventStartTime||"");
+  if(!time)return "99:99";
+  const eventDate=String(project?.eventDate||"");
+  // Die Terminzeit ist nur fuer den zugeordneten Projekttag aussagekraeftig.
+  if(sortDate&&eventDate&&eventDate!==sortDate)return "99:99";
+  return time;
+}
+function vp214CompareProjectsByDue(a,b){
+  const da=vp214ProjectDueDate(a)||"9999-99-99",dbb=vp214ProjectDueDate(b)||"9999-99-99";
+  if(da!==dbb)return da.localeCompare(dbb);
+  const ta=vp214ProjectStartTimeForSort(a,da),tb=vp214ProjectStartTimeForSort(b,dbb);
+  if(ta!==tb)return ta.localeCompare(tb);
+  return String(a?.name||"").localeCompare(String(b?.name||""),"de");
+}
 function vp209ProjectParentSummary(project){
   const e=vp209ParentEventForProject(project);
   if(!e)return "";
@@ -6777,7 +6840,12 @@ openEventModal=function(rec=null,presetProjectId="",preset={}){
   const project=presetProjectId?recordById("projects",presetProjectId):null;if(!rec&&project&&project.status==="closed")return alert("Abgeschlossene Projekte müssen zuerst wieder aktiviert werden, bevor neue Termine angelegt werden können.");
   const r=rec||{title:preset.title||"",startDate:preset.startDate||todayStr(),endDate:preset.endDate||preset.startDate||todayStr(),startTime:"",endTime:"",location:"",groupId:project?.groupId||"",projectId:presetProjectId||"",description:"",color:"#1677c8",recurrence:"none",recurrenceUntil:""};
   const fixed=!!(presetProjectId&&!rec),allDay=!eventStartTime(r)&&!eventEndTime(r);
-  showModal(rec?"Termin bearbeiten":fixed?"Termin zum Projekt anlegen":"Neuer Termin",`<div class="form-grid">${fixed?`<div class="form-note full">Projekt: <b>${esc(project?.name||"")}</b></div>`:""}<label class="full">Titel<input id="fTitle" value="${esc(r.title||"")}"></label><label>Von<input id="fStartDate" type="date" value="${esc(eventStartDate(r)||todayStr())}"></label><label>Bis<input id="fEndDate" type="date" value="${esc(eventEndDate(r)||eventStartDate(r)||todayStr())}"></label><label class="checkline full"><input id="fAllDay" type="checkbox" ${allDay?"checked":""}> Ganztägig</label><label>Startzeit<input id="fStartTime" type="time" value="${esc(eventStartTime(r))}"></label><label>Endzeit<input id="fEndTime" type="time" value="${esc(eventEndTime(r))}"></label><label>Ort<input id="fLocation" value="${esc(r.location||"")}"></label><label>Gruppe<select id="fGroup">${groupOptions(r.groupId)}</select></label><label class="full">Projekt<select id="fEventProject" ${fixed?"disabled":""}>${projectOptions(r.projectId||presetProjectId)}</select></label><label>Wiederholung<select id="fRecurrence"><option value="none">Keine</option>${[["daily","Täglich"],["weekly","Wöchentlich"],["monthly","Monatlich"],["yearly","Jährlich"]].map(([v,l])=>`<option value="${v}" ${r.recurrence===v?"selected":""}>${l}</option>`).join("")}</select></label><label>Wiederholen bis<input id="fRecurrenceUntil" type="date" value="${esc(r.recurrenceUntil||"")}"></label><label class="full">Notizen<textarea id="fEventDescription" rows="4">${esc(r.description||"")}</textarea></label><label>Farbe<input id="fColor" type="color" value="${eventColor(r)}"></label></div>`,()=>{
+  const colorPalette=[
+    "#1677c8","#2f9628","#e67e22","#c43d3d","#7a5cc7",
+    "#86bce8","#95cb8d","#f1b67a","#e79292","#b8a2dd"
+  ];
+  const currentColor=eventColor(r);
+  showModal(rec?"Termin bearbeiten":fixed?"Termin zum Projekt anlegen":"Neuer Termin",`<div class="form-grid">${fixed?`<div class="form-note full">Projekt: <b>${esc(project?.name||"")}</b></div>`:""}<label class="full">Titel<input id="fTitle" value="${esc(r.title||"")}"></label><label>Von<input id="fStartDate" type="date" value="${esc(eventStartDate(r)||todayStr())}"></label><label>Bis<input id="fEndDate" type="date" value="${esc(eventEndDate(r)||eventStartDate(r)||todayStr())}"></label><label class="checkline full"><input id="fAllDay" type="checkbox" ${allDay?"checked":""}> Ganztägig</label><label>Startzeit<input id="fStartTime" type="time" value="${esc(eventStartTime(r))}"></label><label>Endzeit<input id="fEndTime" type="time" value="${esc(eventEndTime(r))}"></label><label>Ort<input id="fLocation" value="${esc(r.location||"")}"></label><label>Gruppe<select id="fGroup">${groupOptions(r.groupId)}</select></label><label class="full">Projekt<select id="fEventProject" ${fixed?"disabled":""}>${projectOptions(r.projectId||presetProjectId)}</select></label><label>Wiederholung<select id="fRecurrence"><option value="none">Keine</option>${[["daily","Täglich"],["weekly","Wöchentlich"],["monthly","Monatlich"],["yearly","Jährlich"]].map(([v,l])=>`<option value="${v}" ${r.recurrence===v?"selected":""}>${l}</option>`).join("")}</select></label><label>Wiederholen bis<input id="fRecurrenceUntil" type="date" value="${esc(r.recurrenceUntil||"")}"></label><label class="full">Notizen<textarea id="fEventDescription" rows="4">${esc(r.description||"")}</textarea></label><div class="form-section full">Farbe</div><div class="event-color-tiles-simple full" role="group" aria-label="Terminfarbe">${colorPalette.map(c=>`<button type="button" class="event-color-tile-simple ${c.toLowerCase()===currentColor.toLowerCase()?"active":""}" data-event-color="${c}" style="--event-tile-color:${c}" aria-label="Farbe auswählen" aria-pressed="${c.toLowerCase()===currentColor.toLowerCase()?"true":"false"}"></button>`).join("")}</div><input id="fColor" type="hidden" value="${currentColor}"></div>`,()=>{
     const title=$("#fTitle").value.trim(),sd=$("#fStartDate").value,ed=$("#fEndDate").value||sd;if(!title||!sd)return false;if(ed<sd){alert("Das Bis-Datum darf nicht vor dem Von-Datum liegen.");return false}
     const all=$("#fAllDay").checked,st=all?"":$("#fStartTime").value,et=all?"":$("#fEndTime").value;if(!all&&st&&et&&sd===ed&&et<=st){alert("Die Endzeit muss nach der Startzeit liegen.");return false}
     const assigned=rec?vp209ProjectsForEvent(rec.id):[],outside=assigned.filter(p=>p.eventDate&&(p.eventDate<sd||p.eventDate>ed));
@@ -6786,6 +6854,10 @@ openEventModal=function(rec=null,presetProjectId="",preset={}){
     outside.forEach(p=>{p.eventDate=p.eventDate<sd?sd:ed;touch(p)});saveLocal();return true;
   });
   const toggle=()=>{$("#fStartTime").disabled=$("#fAllDay").checked;$("#fEndTime").disabled=$("#fAllDay").checked};$("#fAllDay")?.addEventListener("change",toggle);toggle();
+  $$("[data-event-color]").forEach(btn=>btn.addEventListener("click",()=>{
+    const value=btn.dataset.eventColor;$("#fColor").value=value;
+    $$("[data-event-color]").forEach(tile=>{const active=tile===btn;tile.classList.toggle("active",active);tile.setAttribute("aria-pressed",active?"true":"false")});
+  }));
 };
 
 showEventDetails=function(e){
