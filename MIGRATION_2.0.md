@@ -1,25 +1,45 @@
-# Migration auf V-Planer 2.1.1
+# Migration auf V-Planer 2.2.0
 
-## Vorher sichern
+## Vor dem Update
 
-Vor dem Ersetzen einer produktiv verwendeten 1.8.0-Version zuerst unter Einstellungen eine vollstaendige V-Planer-Sicherung herunterladen.
+Vor dem Wechsel auf 2.2.0 wird ein aktuelles Backup des bisherigen V-Planer-Datenbestands empfohlen.
 
-## Bestehende Browserdaten
+## Was übernommen wird
 
-V-Planer 2.1.1 liest weiterhin den bisherigen lokalen Speicher. Die Migration geschieht beim Start der Anwendung. Die alten Bereiche Dokumente, Vereinswissen sowie Sitzungen & Beschluesse werden nicht in der Navigation angezeigt, vorhandene Datensaetze werden aber nicht automatisch geloescht.
+Die für das heutige Programm relevanten Kerndaten bleiben erhalten:
 
-## Statusmigration
+- Aufgaben und deren Archivstatus
+- Projekte und deren Archivstatus
+- Termine
+- Mitglieder
+- Gruppen und Funktionen
+- Strafen
+- Finanz-Snapshots
+- Einstellungen, Jahresnotizen und weitere aktuelle Programmdaten
+- Schichtpläne und Termin-Projekt-Zuordnungen
 
-- Aufgaben: `wait` wird zu `open`.
-- Projekte: `paused` wird zu `active`.
-- Mitglieder: `inactive` wird zu `exited`.
+## Was bereinigt wird
 
-## Projekte und Papierkorb
+Nicht mehr verwendete interne Systeme aus älteren Versionen werden aus dem aktiven Datenmodell entfernt. Dazu gehören insbesondere alte Daten für:
 
-Wird ein Projekt in 2.1.1 geloescht, werden seine Projektaufgaben als zusammengehoerige Loeschung mitgefuehrt. Eine Wiederherstellung stellt diese Datensaetze gemeinsam wieder her. Bei archivierten Projekten bleibt der Archivzustand waehrend des Papierkorb-Zyklus erhalten.
+- Sitzungen und Beschlüsse
+- interne Dokumentverwaltung
+- Vereinswissen
+- Datei-/Ordnerstrukturen und generische Verknüpfungen
+- Haushalte und alte Beziehungsmodelle
 
-Historische Kalendertermine werden bei der Projektarchivierung nicht geloescht.
+Der frühere sichtbare Google-Drive-Ordner `Vereinsplanung` ist für 2.2.0 nicht erforderlich. Der aktuelle Drive-Sync verwendet den versteckten `appDataFolder`.
 
-## Google
+## Google Kalender nach dem Update
 
-Die OAuth Client-ID bleibt in `config.js`. Beim ersten produktiven Test nach dem Update Drive und Kalender ueber den zentralen Sync-Bereich auf der Uebersicht pruefen.
+Der neue Schalter `Google Kalender synchronisieren` startet bei bisherigen Datenbeständen standardmäßig **Aus**, sofern die Einstellung nicht bereits explizit durch eine 2.2.x-Version gespeichert wurde.
+
+Der Kalender wird erst synchronisiert, wenn der Schalter unter `Einstellungen > Erweitert` eingeschaltet und anschließend `Einstellungen speichern` gedrückt wurde. Bei ausgeschaltetem Kalender-Sync läuft nur Google Drive. Bereits vorhandene Google-Kalendereinträge werden nicht gelöscht.
+
+## Archiv
+
+- archivierte Projekte → Archiv > Projekte
+- archivierte erledigte Aufgaben → Archiv > Aufgaben
+- Mitglieder mit Status `Ausgetreten` → Archiv > Mitglieder
+
+Ausgetretene Mitglieder werden nicht gelöscht. Sie können im Archiv bearbeitet oder wieder aufgenommen werden.

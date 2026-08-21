@@ -1,6 +1,6 @@
 # KassenKumpel -> V-Planer
 
-V-Planer 2.1.1 erwartet den Finanzexport aus KassenKumpel 1.2.0 als JSON.
+V-Planer 2.2.0 erwartet den Finanzexport aus KassenKumpel 1.2.0 als JSON.
 
 ## Ablauf
 
