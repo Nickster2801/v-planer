@@ -1999,6 +1999,7 @@ $("#memberSortDir")?.addEventListener("click",()=>{
 function nextPersonalDate(m){ const d=daysToBirthday(m); return d===null?"—":d===0?"🎂 heute":d===1?"🎂 morgen":d<=7?`🎂 in ${d} Tagen`:fmtDate(m.birthDate?`${new Date().getFullYear()}-${m.birthDate.slice(5)}`:""); }
 function memberPhotoHTML(m){return m.photoData?`<img class="member-photo" src="${m.photoData}" alt="Foto">`:`<div class="member-photo person-dot" style="display:grid">${esc((m.firstName?.[0]||"")+(m.lastName?.[0]||""))}</div>`}
 function renderMemberDetail(){}
+const euroFmt=new Intl.NumberFormat("de-DE",{style:"currency",currency:"EUR"});
 function fineMoney(value){return euroFmt.format(Number(value)||0)}
 function fineStatusLabel(status){return ({open:"Offen",paid:"Bezahlt",waived:"Erlassen"})[status]||status||"Offen"}
 function fineStatusBadge(status,dueDate=""){
@@ -3120,9 +3121,7 @@ function startPoll(){
 }
 
 /* =========================================================
-   V-Planer 1.5.0–1.7.0
-   Globale Suche, allgemeine Verknüpfungen, Papierkorb,
-   Mitgliederbeziehungen/Datenaustausch und Mobile Agenda
+   Shared UI helpers: globale Suche und Papierkorb
    ========================================================= */
 
 const LINK_TYPE_META={
@@ -3303,84 +3302,6 @@ function deleteSelectedGroup(){
   functions.forEach(f=>markDeleted("functions",f.id,{trashBatchId,trashRootType:"group",trashRootId:g.id}));
   selectedGroupId=null;saveLocal();
 }
-
-/* ---------- Calendar Agenda / Smartphone ---------- */
-const CALENDAR_DISPLAY_KEY="v-planer-calendar-display-v1";
-function calendarDisplayMode(){
-  const stored=localStorage.getItem(CALENDAR_DISPLAY_KEY);
-  if(stored==="agenda"||stored==="month")return stored;
-  return window.innerWidth<=760?"agenda":"month";
-}
-function setCalendarDisplayMode(mode){
-  if(mode!=="agenda"&&mode!=="month")return;
-  localStorage.setItem(CALENDAR_DISPLAY_KEY,mode);
-  applyCalendarDisplayMode();
-}
-function applyCalendarDisplayMode(){
-  const mode=calendarDisplayMode(),card=$("#view-calendar .calendar-card");
-  if(card){card.classList.toggle("is-agenda",mode==="agenda");card.classList.toggle("is-month",mode==="month")}
-  $$("[data-calendar-mode]").forEach(btn=>btn.classList.toggle("active",btn.dataset.calendarMode===mode));
-}
-function agendaItemsForDate(ds){
-  const date=new Date(`${ds}T12:00:00`),year=date.getFullYear();
-  const items=[];
-  activeRows("events").filter(e=>eventOccursOn(e,ds)).forEach(e=>items.push({
-    kind:"event",id:e.id,time:eventStartDate(e)===ds?(eventStartTime(e)||""):"",
-    title:e.title||"Termin",sub:[event.location,groupName(e.groupId)!=="—"?groupName(e.groupId):""].filter(Boolean).join(" · "),
-    icon:"📅",sort:`0-${eventStartTime(e)||"99:99"}`
-  }));
-  activeRows("tasks").filter(t=>t.due===ds).forEach(t=>items.push({
-    kind:"task",id:t.id,time:"",title:t.title||"Aufgabe",sub:`${statusLabel(t.status)} · ${projectNameAny(t.projectId)}`,
-    icon:"✓",sort:"1-00"
-  }));
-  activeRows("projects").filter(p=>projectOccursOn(p,ds)).forEach(p=>items.push({
-    kind:"project",id:p.id,time:"",title:p.name||"Projekt",sub:`${statusLabel(p.status)} · ${projectDateRangeText(p)}`,
-    icon:"◆",sort:"2-00"
-  }));
-  activeRows("members").filter(m=>m.status!=="deceased"&&m.birthDate&&recurringDateForYear(m.birthDate,year)===ds).forEach(m=>{
-    const age=year-Number(m.birthDate.slice(0,4));
-    items.push({kind:"member",id:m.id,time:"",title:memberFullName(m),sub:`${age}. Geburtstag${isRoundBirthdayAge(age)?" · Runder Geburtstag":""}`,icon:isRoundBirthdayAge(age)?"🎉":"🎂",sort:"3-00"});
-  });
-  if(db.settings.reminders.jubilee){
-    activeRows("members").filter(m=>m.status!=="deceased"&&m.entryDate&&recurringDateForYear(m.entryDate,year)===ds).forEach(m=>{
-      const years=year-Number(m.entryDate.slice(0,4));
-      if(years>0&&isConfiguredJubilee(years))items.push({kind:"member",id:m.id,time:"",title:memberFullName(m),sub:`${years}. Vereinsjubiläum`,icon:"★",sort:"4-00"});
-    });
-  }
-  return items.sort((a,b)=>a.sort.localeCompare(b.sort)||a.title.localeCompare(b.title,"de"));
-}
-function renderCalendarAgenda(){
-  const host=$("#calendarAgenda");if(!host)return;
-  const y=calDate.getFullYear(),m=calDate.getMonth(),today=todayStr(),currentMonth=today.startsWith(`${y}-${String(m+1).padStart(2,"0")}`);
-  let startDay=currentMonth?Number(today.slice(8,10)):1;
-  const monthDays=new Date(y,m+1,0).getDate();
-  let dates=[];
-  for(let d=startDay;d<=monthDays;d++)dates.push(`${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`);
-  // In the current month also show the first two weeks ahead so the agenda never ends abruptly.
-  if(currentMonth){
-    const last=new Date(y,m,monthDays,12);
-    for(let i=1;i<=14;i++){const x=new Date(last);x.setDate(x.getDate()+i);dates.push(`${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`)}
-  }
-  const populated=dates.map(ds=>({ds,items:agendaItemsForDate(ds)})).filter(x=>x.items.length);
-  host.innerHTML=populated.length?populated.map(day=>{
-    const d=new Date(`${day.ds}T12:00:00`),delta=Math.round((d-new Date(`${today}T12:00:00`))/86400000);
-    const relative=delta===0?"Heute":delta===1?"Morgen":new Intl.DateTimeFormat("de-DE",{weekday:"long"}).format(d);
-    const dateText=new Intl.DateTimeFormat("de-DE",{day:"2-digit",month:"long",year:day.ds.slice(0,4)!==today.slice(0,4)?"numeric":undefined}).format(d);
-    return `<section class="calendar-agenda-day">
-      <div class="calendar-agenda-date"><b>${esc(relative)}</b><span>${esc(dateText)}</span></div>
-      <div class="calendar-agenda-items">${day.items.map(item=>`<button class="calendar-agenda-item" type="button" data-agenda-type="${item.kind}" data-agenda-id="${item.id}">
-        <span class="calendar-agenda-time">${esc(item.time?`${item.time} Uhr`:"ganztägig")}</span>
-        <span class="calendar-agenda-icon">${item.icon}</span>
-        <span class="calendar-agenda-copy"><b>${esc(item.title)}</b><small>${esc(item.sub||"")}</small></span>
-        <span class="calendar-agenda-kind">${esc(LINK_TYPE_META[item.kind]?.label||"Mitglied")}</span>
-      </button>`).join("")}</div>
-    </section>`;
-  }).join(""):`<div class="calendar-agenda-empty">In diesem Zeitraum gibt es keine Termine, Aufgaben, Projekte oder persönlichen Ereignisse.</div>`;
-  $$("[data-agenda-type]").forEach(btn=>btn.onclick=()=>openLinkedRecord(btn.dataset.agendaType,btn.dataset.agendaId));
-}
-$$("[data-calendar-mode]").forEach(btn=>btn.addEventListener("click",()=>setCalendarDisplayMode(btn.dataset.calendarMode)));
-window.addEventListener("resize",()=>{if(!localStorage.getItem(CALENDAR_DISPLAY_KEY))applyCalendarDisplayMode()});
-
 
 /* ---------- CSV / Excel Import & Export ---------- */
 const MEMBER_IO_FIELDS=[
@@ -3693,11 +3614,11 @@ function openMemberExport(){
 $("#memberExportBtn")?.addEventListener("click",openMemberExport);
 
 /* =========================================================
-   V-PLANER 2.2.0 CLEAN CORE
+   V-PLANER 2.2.1 CLEAN CORE
    Current production model. Obsolete document, meeting, knowledge,
    household and generic-link subsystems have been removed.
    ========================================================= */
-const VP2_VERSION="2.2.0";
+const VP2_VERSION="2.2.1";
 const VP2_TASK_VIEW_KEY="v-planer-task-view-v2";
 const VP2_CAL_VIEW_KEY="v-planer-calendar-view-v2";
 let vp2YearFilter="";
@@ -4338,7 +4259,7 @@ openFunctionModal=function(rec=null,groupId=""){
 };
 
 /* ---------- Finance read-only import ---------- */
-const vp2Euro=new Intl.NumberFormat("de-DE",{style:"currency",currency:"EUR"});
+const vp2Euro=euroFmt;
 function vp2ValidateFinanceSnapshot(x){
   if(!x||typeof x!=="object")throw new Error("Die Datei enthält keine gültigen Finanzdaten.");if(x.kind!=="vplaner-finance-snapshot"||x.source!=="KassenKumpel")throw new Error("Diese Datei ist keine gültige KassenKumpel-Exportdatei.");if(Number(x.schemaVersion)!==1)throw new Error("Diese Exportversion wird vom V-Planer nicht unterstützt.");if(!Number.isInteger(Number(x.businessYear)))throw new Error("Das Geschäftsjahr fehlt oder ist ungültig.");if(!x.generatedAt||Number.isNaN(new Date(x.generatedAt).getTime()))throw new Error("Der Datenstand ist ungültig.");for(const v of [x.balances?.bank,x.balances?.cash,x.balances?.total,x.yearToDate?.income,x.yearToDate?.expenses,x.yearToDate?.result])if(typeof v!=="number"||!Number.isFinite(v))throw new Error("Die Finanzdaten sind unvollständig oder enthalten ungültige Zahlen.");return x;
 }
@@ -4353,9 +4274,9 @@ function renderFinanceReadOnly(){
 
 /* ---------- Settings ---------- */
 function vp2ApplyAppearance(){const mode=db.settings.appearance||"system",dark=mode==="dark"||(mode==="system"&&window.matchMedia?.("(prefers-color-scheme: dark)").matches);document.documentElement.dataset.v2Theme=dark?"dark":"light";document.body?.classList.toggle("vp2-dark",dark)}
-renderSettings=function(){
+function renderSettings(){
   const c=db.settings.clubData||defaultDB().settings.clubData;$("#v2TaskDefault").value=db.settings.taskDefaultView||"list";$("#v2CalendarDefault").value=db.settings.calendarDefaultView||"month";$("#v2Appearance").value=db.settings.appearance||"system";$("#v2Scale").value=db.settings.uiScale||100;$("#v2ScaleLabel").textContent=`${db.settings.uiScale||100}%`;$("#v2ClubName").value=db.settings.clubName||"";$("#v2ClubShortName").value=c.shortName||"";$("#v2ClubFounded").value=c.foundedDate||"";$("#v2ClubEmail").value=c.contact?.email||"";$("#v2ClubPhone").value=c.contact?.phone||"";$("#v2ClubStreet").value=c.address?.street||"";$("#v2ClubZip").value=c.address?.zip||"";$("#v2ClubCity").value=c.address?.city||"";if($("#v2CalendarSyncEnabled"))$("#v2CalendarSyncEnabled").checked=db.settings.calendarSyncEnabled===true;vp2ApplyAppearance()
-};
+}
 function vp2SaveSettings(){
   const c=db.settings.clubData||defaultDB().settings.clubData,wasCalendarEnabled=db.settings.calendarSyncEnabled===true;db.settings.taskDefaultView=$("#v2TaskDefault").value;db.settings.calendarDefaultView=$("#v2CalendarDefault").value;db.settings.appearance=$("#v2Appearance").value;db.settings.uiScale=Number($("#v2Scale").value)||100;db.settings.calendarSyncEnabled=$("#v2CalendarSyncEnabled")?.checked===true;db.settings.clubName=$("#v2ClubName").value.trim();db.settings.clubData={...c,shortName:$("#v2ClubShortName").value.trim(),foundedDate:$("#v2ClubFounded").value,address:{...(c.address||{}),street:$("#v2ClubStreet").value.trim(),zip:$("#v2ClubZip").value.trim(),city:$("#v2ClubCity").value.trim()},contact:{...(c.contact||{}),email:$("#v2ClubEmail").value.trim(),phone:$("#v2ClubPhone").value.trim()}};db.settingsUpdatedAt=now();saveCalendarPrefs({enabled:db.settings.calendarSyncEnabled});if(!db.settings.calendarSyncEnabled){clearTimeout(calendarSyncTimer)}else if(!wasCalendarEnabled&&hasUsableCalendarToken())scheduleCalendarAutoSync();applyUiScale(db.settings.uiScale);vp2ApplyAppearance();saveLocal({autoCalendar:false});renderDashboardStorage();alert("Einstellungen gespeichert.")
 }
@@ -4367,7 +4288,7 @@ renderGlobalSearch=function(){const input=$("#globalSearchInput"),box=$("#global
 deletedTrashRows=function(){const allowed=["tasks","projects","events","members","groups","functions","fines"],rows=[];allowed.forEach(c=>(db[c]||[]).filter(r=>r.deletedAt&&!r.purgedAt).forEach(r=>{if(r.trashRootType==="project"&&c!=="projects")return;rows.push({collection:c,record:r})}));return rows.sort((a,b)=>String(b.record.deletedAt||"").localeCompare(String(a.record.deletedAt||"")))};
 
 /* ---------- Master render + bindings ---------- */
-renderAll=function(){applyModuleVisibility();renderDashboard();renderTasks();renderProjects();renderCalendar();renderYear();renderArchive();renderFinanceReadOnly();renderFines();renderMembers();renderGroups();renderTrash();renderSettings();requestAnimationFrame(()=>{vp2ApplyTaskView();vp2ApplyCalendarMode()})};
+function renderAll(){applyModuleVisibility();renderDashboard();renderTasks();renderProjects();renderCalendar();renderYear();renderArchive();renderFinanceReadOnly();renderFines();renderMembers();renderGroups();renderTrash();renderSettings();requestAnimationFrame(()=>{vp2ApplyTaskView();vp2ApplyCalendarMode()})}
 
 // One-time UI bindings for 2.0
 // Some controls existed in 1.8.0 and already had anonymous listeners attached.

@@ -1,8 +1,8 @@
-# Migration auf V-Planer 2.2.0
+# Migration auf V-Planer 2.2.1
 
 ## Vor dem Update
 
-Vor dem Wechsel auf 2.2.0 wird ein aktuelles Backup des bisherigen V-Planer-Datenbestands empfohlen.
+Vor dem Wechsel auf 2.2.1 wird ein aktuelles Backup des bisherigen V-Planer-Datenbestands empfohlen.
 
 ## Was übernommen wird
 
@@ -28,7 +28,7 @@ Nicht mehr verwendete interne Systeme aus älteren Versionen werden aus dem akti
 - Datei-/Ordnerstrukturen und generische Verknüpfungen
 - Haushalte und alte Beziehungsmodelle
 
-Der frühere sichtbare Google-Drive-Ordner `Vereinsplanung` ist für 2.2.0 nicht erforderlich. Der aktuelle Drive-Sync verwendet den versteckten `appDataFolder`.
+Der frühere sichtbare Google-Drive-Ordner `Vereinsplanung` ist für 2.2.1 nicht erforderlich. Der aktuelle Drive-Sync verwendet den versteckten `appDataFolder`.
 
 ## Google Kalender nach dem Update
 

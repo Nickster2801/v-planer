@@ -1,9 +1,13 @@
-# V-Planer 2.2.0
+# V-Planer 2.2.1
 
 V-Planer ist eine responsive Vereinsverwaltung als statische PWA für Smartphone, Tablet und Desktop.
 
-## Schwerpunkte in 2.2.0
+## Schwerpunkte in 2.2.1
 
+- Fehlerbehebung: Die Einstellungsreiter `Allgemein`, `Verein`, `Darstellung`, `Daten & Sicherung` und `Erweitert` reagieren wieder korrekt.
+- Fehlerbehebung: Der Strafen-/Finanzbereich verwendet wieder einen gültigen Euro-Formatter und kann den Gesamtrender nicht mehr abbrechen.
+- Aufräumen: Nicht mehr verwendete JavaScript-Logik der alten mobilen Kalender-Agenda sowie CSS-Reste der früheren Aufgaben-Dateianhänge wurden entfernt.
+- Smoke-Test über alle Hauptbereiche, Einstellungsreiter, Aufgabenarchiv, Mitgliederarchiv, Projekt-Sortierung, Kalender-Sync-Schalter und Erstellungsdialoge ohne Laufzeitfehler.
 - Technischer Aufräumschritt: nicht mehr verwendete Bereiche für Sitzungen/Beschlüsse, interne Dokumente, Vereinswissen, Haushalte und generische Verknüpfungen wurden aus dem aktiven Datenmodell entfernt.
 - Google Drive synchronisiert den V-Planer-Datenbestand über den versteckten `appDataFolder`. Ein sichtbarer Drive-Ordner `Vereinsplanung` wird nicht mehr verwendet.
 - Google Kalender ist optional und **standardmäßig ausgeschaltet**. Er wird erst aktiviert, nachdem der Schalter unter `Einstellungen > Erweitert` eingeschaltet und `Einstellungen speichern` ausgeführt wurde.

@@ -5,8 +5,8 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/>
 <meta content="#075aa8" name="theme-color"/>
-<meta content="V-Planer 2.2.0 – Vereinsplanung, Mitglieder, Gruppen, Kalender und Finanzübersicht." name="description"/>
-<title>V-Planer 2.2.0 · Dein Verein. Einfach organisiert.</title>
+<meta content="V-Planer 2.2.1 – Vereinsplanung, Mitglieder, Gruppen, Kalender und Finanzübersicht." name="description"/>
+<title>V-Planer 2.2.1 · Dein Verein. Einfach organisiert.</title>
 <link href="manifest.webmanifest" rel="manifest"/>
 <link href="icons/icon-192.png" rel="icon"/>
 <link href="styles.css" rel="stylesheet"/>
@@ -49,7 +49,7 @@
 <button class="nav-btn" data-view="settings">⚙️ <span>Einstellungen</span></button>
 </nav>
 <div class="sidebar-footer">
-<small>V-Planer · 2.2.0</small>
+<small>V-Planer · 2.2.1</small>
 </div>
 </aside>
 <main class="main">
@@ -350,7 +350,7 @@
 <button class="btn danger" id="emptyTrashBtn" type="button">Papierkorb leeren</button>
 </div>
 <div class="card trash-info">
-<div><b>Papierkorb</b><span>Gelöschte Inhalte können wiederhergestellt oder endgültig entfernt werden. Ordner werden inklusive ihrer gelöschten Unterstruktur behandelt.</span></div>
+<div><b>Papierkorb</b><span>Gelöschte Inhalte können wiederhergestellt oder endgültig entfernt werden.</span></div>
 <strong id="trashCount">0</strong>
 </div>
 <div class="trash-list" id="trashList"></div>
@@ -368,7 +368,7 @@
 <section class="settings-v2-panel" data-settings-v2-panel="club"><div class="card setting-card"><h2>Verein</h2><div class="settings-card-body"><div class="settings-form-grid-v2"><label class="full">Vereinsname<input id="v2ClubName"/></label><label>Kurzname<input id="v2ClubShortName"/></label><label>Gründungsdatum<input id="v2ClubFounded" type="date"/></label><label>E-Mail<input id="v2ClubEmail" type="email"/></label><label>Telefon<input id="v2ClubPhone"/></label><label class="full">Straße / Hausnummer<input id="v2ClubStreet"/></label><div class="settings-address-grid-v2"><label>PLZ<input id="v2ClubZip"/></label><label>Ort<input id="v2ClubCity"/></label></div></div></div></div></section>
 <section class="settings-v2-panel" data-settings-v2-panel="appearance"><div class="card setting-card"><h2>Darstellung</h2><label>Erscheinungsbild<select id="v2Appearance"><option value="system">System</option><option value="light">Hell</option><option value="dark">Dunkel</option></select></label><label>Oberflächengröße <b id="v2ScaleLabel">100%</b><input id="v2Scale" max="125" min="80" step="5" type="range"/></label><button class="btn secondary" id="v2ScaleReset" type="button">Auf 100 % zurücksetzen</button></div></section>
 <section class="settings-v2-panel" data-settings-v2-panel="backup"><div class="card setting-card"><h2>Daten &amp; Sicherung</h2><p class="setting-help">Vollständigen strukturierten Datenbestand lokal sichern oder wiederherstellen.</p><div class="button-row"><button class="btn primary" id="v2BackupExport" type="button">Sicherung herunterladen</button><button class="btn secondary" id="v2BackupImport" type="button">Sicherung wiederherstellen</button></div><p class="setting-help">Die Google-Verbindung wird hier nicht verwaltet.</p></div></section>
-<section class="settings-v2-panel" data-settings-v2-panel="advanced"><div class="card setting-card"><h2>Erweitert</h2><p>V-Planer Version <b>2.2.0</b></p><div class="switch-row"><div><b>Google Kalender synchronisieren</b><small>Standardmäßig aus. Erst nach dem Aktivieren und Speichern werden Kalenderdaten synchronisiert.</small></div><label class="switch"><input id="v2CalendarSyncEnabled" type="checkbox"/><span></span></label></div><p class="setting-help v22-calendar-setting-note">Ist die Funktion ausgeschaltet, synchronisiert V-Planer ausschließlich die Daten über Google Drive. Bestehende Einträge im Google Kalender werden dadurch nicht gelöscht.</p><button class="btn secondary" id="v2DisconnectGoogle" type="button">Google-Verbindungen auf diesem Gerät trennen</button></div></section>
+<section class="settings-v2-panel" data-settings-v2-panel="advanced"><div class="card setting-card"><h2>Erweitert</h2><p>V-Planer Version <b>2.2.1</b></p><div class="switch-row"><div><b>Google Kalender synchronisieren</b><small>Standardmäßig aus. Erst nach dem Aktivieren und Speichern werden Kalenderdaten synchronisiert.</small></div><label class="switch"><input id="v2CalendarSyncEnabled" type="checkbox"/><span></span></label></div><p class="setting-help v22-calendar-setting-note">Ist die Funktion ausgeschaltet, synchronisiert V-Planer ausschließlich die Daten über Google Drive. Bestehende Einträge im Google Kalender werden dadurch nicht gelöscht.</p><button class="btn secondary" id="v2DisconnectGoogle" type="button">Google-Verbindungen auf diesem Gerät trennen</button></div></section>
 <div class="settings-save"><button class="btn primary" id="v2SaveSettings" type="button">Einstellungen speichern</button></div>
 </div>
 </div>
